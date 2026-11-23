@@ -39,15 +39,15 @@ No page-level horizontal scroll was found at 412 px or in landscape. The 375/390
 | 6 | Sequence rows read their pitch from `--order-row`: 100 px on phones, with up to four lines of text and stacked 44×44 ▲/▼ buttons. Rows re-lay out when the phone rotates. |
 | 7 | Diagram questions keep a 600 px minimum width and scroll sideways inside their frame, which makes nodes about 44 px. |
 | 8 | Concept figures keep a 540 px minimum width and scroll sideways inside the figure frame. In portrait the Journey scanner tooltip docks along the bottom of the stage, with a "turn sideways" hint. In landscape the stage is sized from the remaining height, sitting next to the narration, with the controls on one row. |
-| 9 | Journey dots are 44 px tall and share the row. The close button is 44×44. |
-| 10 | A focused numeric field scrolls into the half of the screen the keyboard leaves visible (tracked with `visualViewport`), with a spacer so there's room to scroll. The viewport meta adds `interactive-widget=resizes-content`. The Nav computer table is compact and scrolls inside its box. |
+| 9 | Every Journey dot is a full 44×44 target. In portrait, long journeys wrap onto a second row of dots (7 per row at 375 px). The close button is 44×44. |
+| 10 | A focused numeric field scrolls into the part of the screen the keyboard leaves visible (tracked with `visualViewport` resize). A screen-tall spacer guarantees there's room to scroll. The viewport meta adds `interactive-widget=resizes-content`. The Nav computer table is compact and scrolls inside its box. |
 | 11 | The title scrolls if it has to. The footer sits under the button in portrait. Landscape puts the planet beside the copy and drops the footer. |
 | 12 | The map pans sideways on phones (height-fitted, 16:9) and centres the selected world. The mission card is compact and hides the type chips. Landscape docks the card on the right. |
 | 13 | Grids use `minmax(min(320px, 100%), 1fr)`. Phone padding is tighter, with smaller page titles, KPIs and bars. |
 | 14 | The modal and journey box use `100dvh` where supported. |
 | 15 | `env(safe-area-inset-*)` is applied to the top bar, mission screen, dialog, modal, pages and journeys. On desktop it resolves to 0, so nothing changes there. |
-| 16 | Hover styles only apply under `@media (hover: hover)`, so a tapped element doesn't stay nudged. |
+| 16 | Hover styles only apply under `@media (hover: hover)`, so a tapped element doesn't stay nudged. The Concept toggle keeps a 44 px floor on touch screens and landscape phones. |
 | 17 | The canvases are sized to 100% and use `ONA.util.canvasDpr`: 2× cap plus an ~8 MP budget. Phones and laptops are unchanged; 5K-class screens drop below 2×. |
-| 18 | Audio also resumes on `touchend` and `click` (WebKit's activation events) when the context is still suspended after the first tap. |
+| 18 | Audio also resumes on trusted `touchend` and `click` events (WebKit's activation events) when the context is still suspended after the first tap. |
 
 The desktop and iPad layouts are unchanged: the phone rules sit behind `max-width: 600px` or a `max-height: 500px` landscape query. A touch iPad picks up only the `(hover: none) and (pointer: coarse)` rules, which mean 44 px targets and no keyboard hints. The existing desktop and iPad screenshots were compared before and after.

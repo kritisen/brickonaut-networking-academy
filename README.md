@@ -220,9 +220,9 @@ Its concept-figure checks:
 
 Its phone checks (`tests/mobile_checks.mjs`, at 375×667, 390×844, 412×915 and 844×390 with touch emulation) cover every screen: title, galaxy map, briefing, each question type, feedback, debrief, journey player and library, Repair Bay, Captain's Log and Settings. On each one:
 - there is no horizontal page overflow, nothing visible past the viewport edge, and sideways scrolling only where it's designed in (map, diagrams, figures, prefix table)
-- the key controls are on screen and at least 44×44 px (journey progress dots: 44 px tall and at least 36 px wide)
+- the key controls are on screen and at least 44×44 px, and so is every other visible tap target (buttons, links, toggles, sequence rows, Journey dots); nothing is clipped at the screen edge except inside a designed scroll frame
 - the ship never covers the question or the feedback
-- the numeric field uses `inputmode="numeric"`, is at least 16 px (so iOS doesn't zoom), and sits in the upper half once focused
+- the numeric field uses `inputmode="numeric"`, is at least 16 px (so iOS doesn't zoom), and sits in the upper half once focused; when the keyboard opens (a stubbed `visualViewport` shrinking to 34% of the screen plus a `resize` event) it moves up above the keyboard
 - a real touch drag moves a sequence step and ▲ moves it back
 - diagram nodes are at least 32 px across, the journey stage fills the width, and no keyboard hints show on touch
 

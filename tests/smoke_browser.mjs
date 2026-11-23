@@ -271,7 +271,10 @@ try {
       await playRun({ accuracy: acc }); await waitFor(`ONA.game.screen === 'debrief'`);
     }
     const rep = await mobilePass(H, { audit: MOBILE_AUDIT });
-    if (MOBILE_AUDIT) writeFileSync(join(shotDir, 'mobile-all', 'metrics.json'), JSON.stringify(rep, null, 1));
+    if (MOBILE_AUDIT) {   // --no-shots skips the screenshot dirs: make sure this one exists
+      mkdirSync(join(shotDir, 'mobile-all'), { recursive: true });
+      writeFileSync(join(shotDir, 'mobile-all', 'metrics.json'), JSON.stringify(rep, null, 1));
+    }
     console.log('Mobile pass:', Object.keys(rep).length, 'screen checks');
   }
   full: {

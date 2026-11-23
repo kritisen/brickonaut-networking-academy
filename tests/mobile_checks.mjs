@@ -21,6 +21,7 @@ const TRACKED = {
 // Measure the current screen. `keys` = selectors of controls that must be reachable and tappable.
 const MEASURE = (keys) => `(() => {
   const vw = innerWidth, vh = innerHeight, out = { vw, vh };
+  const XOK = '#map-stage, .diagram-wrap, .fc-fig, .navcomp';   // designed sideways-scroll frames
   out.docW = document.documentElement.scrollWidth; out.bodyW = document.body.scrollWidth;
   const layers = ['#topbar', '.screen.active', '#dialog.open', '#modal.open', '#journey.open'];
   const roots = layers.map((s) => document.querySelector(s)).filter((n) => n && !n.classList.contains('hidden'));
@@ -39,11 +40,13 @@ const MEASURE = (keys) => `(() => {
     const r = n.getBoundingClientRect(); if (!r.width || !r.height) return;
     if (r.right <= vw + 1 && r.left >= -1) return;
     if (!shown(n) || decorative(n) || xScroller(n)) return;
+    // Allowlist: content inside a designed sideways-scroll frame (map, wide diagram / figure, prefix table) is meant
+    // to run past the screen edge and is reached by scrolling that frame; anything else clipped is a bug.
+    if (n.parentElement && n.parentElement.closest(XOK)) return;
     (clippedBy(n, r) ? out.clipped : out.overflow).push(name(n) + ' [' + Math.round(r.left) + '..' + Math.round(r.right) + ']');
   }));
   out.overflow = out.overflow.slice(0, 8); out.clipped = out.clipped.slice(0, 8);
   // sideways scrolling is only allowed where it's designed in (pannable map, wide diagrams / figures)
-  const XOK = '#map-stage, .diagram-wrap, .fc-fig, .navcomp';
   out.xscroll = [];
   roots.forEach((root) => [root, ...root.querySelectorAll('*')].forEach((n) => {
     if (n.scrollWidth <= n.clientWidth + 1 || !n.clientWidth || n.matches(XOK) || !shown(n)) return;
@@ -60,7 +63,7 @@ const MEASURE = (keys) => `(() => {
     const w = Math.max(r.width, lr ? lr.width : 0), h = Math.max(r.height, lr ? lr.height : 0);
     if (Math.min(w, h) < 44 - 0.5) out.small.push(name(n) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
   }));
-  out.small = [...new Set(out.small)].slice(0, 12);
+  out.small = [...new Set(out.small)].slice(0, 20);
   out.keys = [];
   ${JSON.stringify(keys)}.forEach((sel) => {
     const all = [...document.querySelectorAll(sel)].filter(shown);
@@ -106,10 +109,11 @@ export async function mobilePass(h, { audit = false } = {}) {
         if (m.xscroll.length) problems.push(`${where} unexpected sideways scrolling: ` + m.xscroll.join(', '));
         m.keys.forEach((k) => {
           if (k.missing) problems.push(`${where} key control missing: ${k.sel}`);
-          // journey progress dots share one row (up to 10 steps): 44 px tall, at least 36 px wide; Back / Next are the 44 px step controls
-          else if ((k.sel.includes('jr-dot') ? k.w < 36 : k.w < 44) || k.h < 44 || !k.inX || !k.inY) problems.push(`${where} key control ${k.sel} ${k.w}x${k.h} ${k.inX && k.inY ? '' : 'off-screen'}(needs >=44x44, on screen)`);
+          else if (k.w < 44 || k.h < 44 || !k.inX || !k.inY) problems.push(`${where} key control ${k.sel} ${k.w}x${k.h} ${k.inX && k.inY ? '' : 'off-screen'}(needs >=44x44, on screen)`);
         });
         if (m.shipOverlap) problems.push(`${where} ship panel covers the ${m.shipOverlap}`);
+        if (m.small.length) problems.push(`${where} tap targets under 44x44: ` + m.small.join(', '));
+        if (m.clipped.length) problems.push(`${where} content clipped at the viewport edge: ` + m.clipped.join(', '));
       }
       const name = ph.id + '-' + tag;
       if (TRACKED[name]) await shot('mobile/' + TRACKED[name]);
@@ -135,7 +139,7 @@ export async function mobilePass(h, { audit = false } = {}) {
     await clearDialogs(); await waitFor(`!!document.querySelector('#q-body')`); await sleep(300);
     // question types
     await drill(firstOf.mc); await key('1'); await check('mc', ['#q-body .choice', '#btn-submit', '#hud-pause']);
-    await answer(false); await sleep(900); await check('feedback', ['#btn-next']);
+    await answer(false); await sleep(900); await check('feedback', ['#btn-next', '#feedback .fb-concept > summary']);
     await finish(); await sleep(500);
     await check('debrief', ['#db-map']);
     await drill(firstOf.multi); await check('multi', ['#q-body .choice', '#btn-submit']); await answer(true); await finish();
@@ -150,6 +154,19 @@ export async function mobilePass(h, { audit = false } = {}) {
       if (ph.h > ph.w && inp.bottom > inp.vh * 0.55) problems.push(`mobile ${ph.label}: focused numeric input too low (bottom ${inp.bottom}/${inp.vh}), the keyboard would cover it`);
     }
     await check('numeric', ['#q-body .num-row', '#btn-submit', '#q-body .navcomp summary']);
+    // the visualViewport path: the keyboard opens (visual viewport shrinks to 34% of the screen, below the 50% fallback) → the field follows it up
+    if (ph.h > ph.w) {
+      const vv = await evaluate(`new Promise((res) => {
+        const i = document.getElementById('num-input'), kb = Math.round(innerHeight * 0.34);
+        const before = Math.round(i.getBoundingClientRect().bottom);
+        Object.defineProperty(visualViewport, 'height', { configurable: true, get: () => kb });
+        visualViewport.dispatchEvent(new Event('resize'));
+        setTimeout(() => { const r = i.getBoundingClientRect(); delete visualViewport.height; res({ kb, before, bottom: Math.round(r.bottom), focused: document.activeElement === i }); }, 250);
+      })`);
+      report[ph.id + '-numeric-keyboard'] = vv;
+      if (!audit && vv.before <= vv.kb - 15) problems.push(`mobile ${ph.label}: keyboard test did not exercise the resize path (field already at ${vv.before}px)`);
+      if (!audit && (!vv.focused || vv.bottom > vv.kb - 15)) problems.push(`mobile ${ph.label}: with the keyboard open (visible height ${vv.kb}px) the numeric field ends at ${vv.bottom}px, under the keyboard`);
+    }
     await answer(true); await finish();
     await drill('l3-tls-order'); await check('order', ['#q-body .order-item .mv button', '#btn-submit']);
     // touch drag: drag the first item down one row with real touch events
