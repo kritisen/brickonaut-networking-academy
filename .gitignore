@@ -1,0 +1,11 @@
+# smoke_browser.mjs writes every test shot here; only the README set is tracked
+screenshots/*
+!screenshots/01-title.jpg
+!screenshots/11-galaxy-map-progress.jpg
+!screenshots/34-concept-tcpip-layers.jpg
+!screenshots/36-concept-cidr.jpg
+!screenshots/37-concept-private-link.jpg
+!screenshots/39-concept-network-policy.jpg
+!screenshots/42-journey-dns-step3.jpg
+!screenshots/44-journeys-library.jpg
+.DS_Store

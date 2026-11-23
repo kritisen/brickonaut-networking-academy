@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Concept figure gallery · Orbital Network Academy</title>
+  <!-- Dev gallery: every concept figure, as mapped by each question. Open over file://.
+       ?only=<figure id> filters; ?samples=1 shows each figure's sample params only; ?motion=reduce previews reduced motion. -->
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/explainers.css">
+  <style>
+    body { overflow: auto; background: #060a1f; padding: 24px; }
+    h1 { font: 800 22px var(--display); letter-spacing: .06em; text-transform: uppercase; margin: 0 0 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(520px, 1fr)); gap: 18px; }
+    .cell { padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(10, 16, 44, .8); }
+    .cell h2 { margin: 0 0 4px; font: 700 14px var(--font); color: #e6ecff; }
+    .cell code { display: block; margin-bottom: 8px; font-size: 11px; color: var(--muted); white-space: pre-wrap; word-break: break-all; }
+    .cell p { font-size: 13px; color: #c9d3ff; margin: 10px 0 0; }
+  </style>
+</head>
+<body>
+  <h1>Concept figures</h1>
+  <div class="grid" id="grid"></div>
+  <script src="../data/questions.js"></script>
+  <script src="../data/concepts.js"></script>
+  <script src="../js/util.js"></script>
+  <script src="../js/art.js"></script>
+  <script src="../js/explainers.js"></script>
+  <script>
+    (function () {
+      var qs = new URLSearchParams(location.search), only = qs.get('only') ? qs.get('only').split(',') : null, X = ONA.explainers;
+      if (qs.get('motion') === 'reduce') document.documentElement.classList.add('reduce-motion');
+      var items = [];
+      if (qs.get('samples')) Object.keys(X.FIGURES).forEach(function (f) { items.push({ label: f, fig: f, params: X.FIGURES[f].sample, concept: '' }); });
+      else ONA.QUESTIONS.forEach(function (q) {
+        items.push({ label: q.id, fig: q.fig, params: q.figParams, concept: q.concept });
+        (q.figParts || []).forEach(function (o, i) { var s = X.spec(q, i); items.push({ label: q.id + ' · step ' + (i + 1), fig: s.fig, params: s.params, concept: '' }); });
+      });
+      var html = items.filter(function (it) { return !only || only.indexOf(it.fig) >= 0; }).map(function (it) {
+        return '<div class="cell" data-fig="' + it.fig + '"><h2>' + it.label + ' → ' + X.FIGURES[it.fig].title + '</h2><code>' + it.fig + ' ' + JSON.stringify(it.params) + '</code>' +
+          '<div class="fc-fig">' + X.render(it.fig, it.params) + '</div>' + (it.concept ? '<p>' + ONA.util.esc(it.concept) + '</p>' : '') + '</div>';
+      }).join('');
+      document.getElementById('grid').innerHTML = html;
+      window.__galleryCount = items.length;
+    })();
+  </script>
+</body>
+</html>
