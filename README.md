@@ -111,6 +111,8 @@ Moods crossfade when the screen changes. The music dips briefly under sound effe
 
 Browsers block autoplay, so the music starts on your first click or key press (usually *Begin training*). A "Music on" toast appears once per visit. When the tab is hidden, the music fades out and audio is suspended; it comes back when you return. Settings are saved with your progress. Saves from before music existed keep their old mute setting and get music and effects switched on at the default volume.
 
+On phones, every later tap or key press keeps trying to unlock audio until the browser actually runs it. On iPhone and iPad the game asks for a playback audio session, so the ringer/silent switch doesn't silence it. Safari 16.4+ does this through `navigator.audioSession`; older iOS plays a looping silent `<audio>` element, which is removed again when you mute. After a phone call, the lock screen or a back/forward navigation, the game resumes audio itself or on your next tap. If the browser still won't start sound about 1 s after a tap while music is on, a small **Tap for sound** chip appears under the top bar. The game never says "Music on" before audio is actually running.
+
 **Accessibility:** contrast is tuned for a dark UI. If your OS has *reduce motion* turned on, the game respects it (no starfield motion, shake, or particles). You can override that in Settings. Reduced motion doesn't turn the music off. It softens the rhythmic pulse and the filter sweeps instead.
 
 ## Content
@@ -225,6 +227,15 @@ Its phone checks (`tests/mobile_checks.mjs`, at 375×667, 390×844, 412×915 and
 - the numeric field uses `inputmode="numeric"`, is at least 16 px (so iOS doesn't zoom), and sits in the upper half once focused; when the keyboard opens (a stubbed `visualViewport` shrinking to 34% of the screen plus a `resize` event) it moves up above the keyboard
 - a real touch drag moves a sequence step and ▲ moves it back
 - diagram nodes are at least 32 px across, the journey stage fills the width, and no keyboard hints show on touch
+
+Its phone audio check (`mobileAudioPass`) uses taps only, at 390×844:
+- the first tap gets a running AudioContext with music, the unlock listeners remove themselves, and "Music on" shows exactly once
+- a stuck (suspended) context re-arms the unlock and shows a 44 px **Tap for sound** chip on screen, with no "Music on" or "Sound on" claim; tapping the chip gets audio running
+- mute and N never show the chip, and unmute and N back on resume with the right toast
+- `pageshow` from the back/forward cache resumes audio
+- the old-iOS silent-loop session plays only while sound is on
+
+Headless Chromium can't reproduce the iOS silent switch or Safari's `interrupted` state, so check those on a real device.
 
 It saves 10 of those shots to `screenshots/mobile/` and the rest to `screenshots/mobile-all/` (gitignored).
 

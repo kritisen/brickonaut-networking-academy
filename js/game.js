@@ -55,6 +55,8 @@
   // so a first gesture that doesn't start music (e.g. M muting everything) still gets the toast later.
   // Returns true when this call started music for the first time; { quiet: true } lets the caller show the
   // toast itself instead of its usual one (M / N), so there's never a duplicate.
+  // Never claim music is on before the context actually runs (phones can refuse to start it): "Music on"
+  // toasts wait for 'running'; if it doesn't get there, the "Tap for sound" chip shows instead.
   var musicToastShown = false, MUSIC_ON_TOAST = 'Music on · N toggles music, M mutes all';
   function startAudio(opts) {
     sfx.unlock();
@@ -62,11 +64,34 @@
     var first = ONA.music.sync() && !musicToastShown;
     if (first) {
       musicToastShown = true;
-      if (!(opts && opts.quiet)) toast(MUSIC_ON_TOAST);
+      if (!(opts && opts.quiet)) whenSoundRuns(function () { toast(MUSIC_ON_TOAST); });
     }
+    syncSoundChip();
     return first;
   }
   G.startAudio = startAudio;
+
+  // Run `ok` once the context is running (now, or within ~0.6 s while a resume settles), else `blocked`.
+  function whenSoundRuns(ok, blocked) {
+    var A = ONA.audio, t0 = Date.now();
+    (function check() {
+      if (A.running()) return ok();
+      if (Date.now() - t0 > 600 || !A.ctx) { if (blocked) blocked(); return; }
+      setTimeout(check, 40);
+    })();
+  }
+
+  // "Tap for sound": music is on, but the browser hasn't let the context run ~1 s after a gesture.
+  var chipTimer = 0;
+  function needsTap() { var A = ONA.audio; return !!A.ctx && A.needsTap(store.state.settings, A.ctx.state, A.hidden || document.hidden); }
+  function syncSoundChip() {
+    var chip = $('#sound-chip'); if (!chip) return;
+    if (!needsTap()) { clearTimeout(chipTimer); chipTimer = 0; chip.hidden = true; return; }
+    if (!chip.hidden || chipTimer) return;
+    chipTimer = setTimeout(function () { chipTimer = 0; if (needsTap()) chip.hidden = false; }, 1000);
+  }
+  G.syncSoundChip = syncSoundChip;
+  ONA.audio.onchange = syncSoundChip;
 
   function applyAudio() {
     ONA.audio.apply();
@@ -185,6 +210,7 @@
   }
 
   function syncMute() {
+    syncSoundChip();
     var m = store.state.settings.muted;
     $$('.mute-btn').forEach(function (b) {
       b.setAttribute('aria-pressed', m ? 'true' : 'false');
@@ -1429,10 +1455,11 @@
   // M / mute button: mute-all (music + SFX). The music and SFX settings underneath are kept.
   function toggleMute() {
     var muted = store.setting('muted', !store.state.settings.muted);
-    var firstMusic = startAudio({ quiet: true });
+    var firstMusic = startAudio({ quiet: true });   // also stops / restarts the old-iOS silent loop for the session
     applyAudio(); syncAudioControls();
     if (!muted) sfx.click();
-    toast(muted ? 'All sound off · M to turn back on' : firstMusic ? MUSIC_ON_TOAST : 'Sound on');
+    if (muted) toast('All sound off · M to turn back on');
+    else whenSoundRuns(function () { toast(firstMusic ? MUSIC_ON_TOAST : 'Sound on'); }, function () { toast(SOUND_BLOCKED); });
   }
 
   // N: music only. If everything is muted, turning music on also lifts the mute-all.
@@ -1442,9 +1469,11 @@
     if (on && s.muted) store.setting('muted', false);
     var firstMusic = startAudio({ quiet: true });
     applyAudio(); syncAudioControls();
-    toast(on ? (firstMusic ? MUSIC_ON_TOAST : 'Music on') : 'Music off · N to turn back on');
+    if (!on) toast('Music off · N to turn back on');
+    else whenSoundRuns(function () { toast(firstMusic ? MUSIC_ON_TOAST : 'Music on'); }, function () { toast(SOUND_BLOCKED); });
   }
   G.toggleMusic = toggleMusic;
+  var SOUND_BLOCKED = 'Sound didn\'t start · tap "Tap for sound"';
 
   function begin() {
     startAudio(); sfx.click();
@@ -1478,14 +1507,8 @@
     }
     document.addEventListener('pointerdown', firstGesture, true);
     document.addEventListener('keydown', firstGesture, true);
-    function resumeOnActivation(e) {
-      if (!e.isTrusted) return;   // only real taps / clicks are user activation; scripted clicks never start audio
-      var c = ONA.audio.ctx;
-      if (!c || c.state !== 'suspended' || document.hidden) return;
-      startAudio();
-    }
-    document.addEventListener('touchend', resumeOnActivation, true);
-    document.addEventListener('click', resumeOnActivation, true);
+    // later gestures (touchend / click / pointerup / keydown) keep unlocking until the context runs: js/audio.js
+    $('#sound-chip').addEventListener('click', function () { startAudio(); sfx.click(); syncSoundChip(); });
     var start = (location.hash || '').replace('#', '');
     show(['map', 'log', 'bay'].indexOf(start) >= 0 ? start : 'title');
   };

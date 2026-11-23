@@ -10,6 +10,13 @@
  *   duck     = briefly lowered under SFX and under wrong-answer feedback
  *   hide     = faded to 0 (then the context is suspended) while the tab is hidden
  *   limiter  = DynamicsCompressor set as a limiter, so stacked voices never clip
+ *
+ * Mobile unlock (see "mobile unlock" below): every trusted gesture (pointerup / touchend / click / keydown)
+ * resumes the context and starts a zero-gain buffer synchronously, until the context reports 'running'; then
+ * the listeners remove themselves. They re-arm whenever the context drops out of 'running' while the page is
+ * visible (iOS interruptions, bfcache). On iOS the page also asks for a playback audio session, so the
+ * ringer/silent switch doesn't mute the game: navigator.audioSession.type = 'playback' (Safari 16.4+), or on
+ * older iOS a looping silent <audio> element started from the gesture and removed again on mute.
  */
 (function (ONA) {
   'use strict';
@@ -29,6 +36,20 @@
     };
   };
   var levelOpts = function () { return { journey: !!(ONA.game && ONA.game.journeyOpen) }; };
+
+  // Pure: should the "Tap for sound" chip show? Music wanted, a context exists but isn't running, page visible.
+  A.needsTap = function (s, state, hidden) {
+    return !!(s && s.music && !s.muted && state && state !== 'running' && state !== 'closed' && !hidden);
+  };
+  // Pure: how this browser gets a playback audio session (so the iOS silent switch doesn't mute Web Audio).
+  //   'audio-session' = navigator.audioSession (Safari 16.4+) · 'silent-loop' = older iOS · 'none' = not needed
+  A.sessionMode = function (nav) {
+    if (!nav) return 'none';
+    if (nav.audioSession && 'type' in nav.audioSession) return 'audio-session';
+    // iPadOS Safari reports a Mac UA: tell it apart by touch points, and from (touch-emulating) desktop Chrome by "Chrome/"
+    var ua = String(nav.userAgent || ''), ios = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && (nav.maxTouchPoints || 0) > 1 && !/Chrome\/|Firefox\//.test(ua));
+    return ios ? 'silent-loop' : 'none';
+  };
 
   // Create the context + bus graph. Call only from a user gesture (or after one).
   A.ensure = function () {
@@ -56,8 +77,106 @@
     A.master.gain.value = lv.master; A.sfxBus.gain.value = lv.sfx; A.musicBus.gain.value = lv.music;
     A.hideGain.gain.value = A.hidden ? 0 : 1;
     if (c.state === 'suspended') c.resume().catch(function () {});
+    c.addEventListener('statechange', onState);
     return c;
   };
+
+  // ---------------------------------------------------------------- mobile unlock
+  var GESTURES = ['pointerup', 'touchend', 'click', 'keydown'], armed = false, loopEl = null, loopUrl = null;
+  A.onchange = null;            // game.js: re-check the "Tap for sound" chip / pending "Music on" toast
+  A._forceSilentLoop = false;   // tests: exercise the old-iOS fallback in Chromium
+  function notify() { if (A.onchange) A.onchange(); }
+  function running() { return !!A.ctx && A.ctx.state === 'running'; }
+  A.running = running;
+  // Unlocked for good: the context runs and, on old iOS with sound on, the silent loop is really playing.
+  function ready() { return running() && (!loopEl || !loopEl.paused); }
+  function onState() {
+    if (ready()) disarm();
+    else if (!A.hidden && A.ctx && A.ctx.state !== 'closed') {
+      arm();
+      if (A.ctx.state === 'interrupted') A.ctx.resume().catch(function () {});   // iOS: resumes once the call / lock ends
+    }
+    notify();
+  }
+
+  // A tiny silent WAV (8 kHz, 8-bit mono, 0.25 s), generated in memory: no files, works from file://.
+  function silentWavUrl() {
+    var n = 2000, buf = new ArrayBuffer(44 + n), v = new DataView(buf), i;
+    function str(o, t) { for (var k = 0; k < t.length; k++) v.setUint8(o + k, t.charCodeAt(k)); }
+    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true);
+    v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true);
+    for (i = 0; i < n; i++) v.setUint8(44 + i, 128);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  function startLoop() {
+    if (loopEl) { if (loopEl.paused) loopEl.play().catch(function () {}); return; }
+    loopUrl = silentWavUrl();
+    loopEl = document.createElement('audio');
+    loopEl.loop = true; loopEl.setAttribute('playsinline', ''); loopEl.setAttribute('aria-hidden', 'true');
+    loopEl.preload = 'auto'; loopEl.src = loopUrl;
+    loopEl.addEventListener('playing', function () { if (ready()) disarm(); });
+    loopEl.play().catch(function () {});
+  }
+  function stopLoop() {
+    if (!loopEl) return;
+    loopEl.pause(); loopEl.removeAttribute('src'); loopEl.load();
+    loopEl = null;
+    if (loopUrl) { URL.revokeObjectURL(loopUrl); loopUrl = null; }
+  }
+  // Playback session: set the audio-session type, or (old iOS) keep the silent loop playing while sound is on.
+  function session() {
+    var mode = A._forceSilentLoop ? 'silent-loop' : A.sessionMode(typeof navigator !== 'undefined' ? navigator : null);
+    if (mode === 'audio-session') { try { navigator.audioSession.type = 'playback'; } catch (e) { /* read-only in some builds */ } }
+    if (mode === 'silent-loop') { if (settings().muted) stopLoop(); else startLoop(); }
+    else stopLoop();
+    return mode;
+  }
+  A.syncSession = session;   // game.js calls this after mute / unmute (inside the same gesture)
+  A._loop = function () { return loopEl ? { paused: loopEl.paused, src: !!loopEl.getAttribute('src'), loop: loopEl.loop } : null; };
+
+  // Synchronous unlock, safe to call from any user gesture: create/resume the context and start a zero-gain buffer.
+  A.unlock = function () {
+    var c = A.ensure(); if (!c) return null;
+    session();
+    if (c.state !== 'running' && !A.hidden) c.resume().then(function () { if (ready()) disarm(); notify(); }).catch(function () {});
+    try {
+      var src = c.createBufferSource(), g = c.createGain();
+      src.buffer = c.createBuffer(1, 1, 22050); g.gain.value = 0;
+      src.connect(g); g.connect(c.destination);
+      src.onended = function () { src.disconnect(); g.disconnect(); };
+      src.start(0);
+    } catch (e) { /* context closed */ }
+    if (ready()) disarm(); else arm();       // still suspended (resume pending or refused): retry on the next gesture
+    return c;
+  };
+  function onGesture(e) {
+    if (!e.isTrusted) return;                                    // scripted events are never user activation
+    if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey || /^(Tab|Shift|Control|Alt|Meta|Escape)$/.test(e.key))) return;
+    if (!A.ctx) return;            // the game's first-gesture handler creates the context (so M / N first keeps its meaning)
+    A.unlock();
+  }
+  function arm() {
+    if (armed || typeof document === 'undefined') return;
+    armed = true;
+    GESTURES.forEach(function (t) { document.addEventListener(t, onGesture, true); });
+  }
+  function disarm() {
+    if (!armed) return;
+    armed = false;
+    GESTURES.forEach(function (t) { document.removeEventListener(t, onGesture, true); });
+  }
+  A._armed = function () { return armed; };
+  // Back from the background (tab switch, bfcache restore): try to resume; if that needs a gesture, re-arm.
+  A.tryResume = function () {
+    if (!A.ctx || A.hidden || A.ctx.state === 'running' || A.ctx.state === 'closed') return;
+    A.ctx.resume().then(function () { if (running()) disarm(); else arm(); notify(); }).catch(function () { arm(); notify(); });
+    if (!running()) arm();
+    notify();
+  };
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('pageshow', function (e) { if (e.persisted && typeof document !== 'undefined') A.setHidden(document.hidden); A.tryResume(); });
+  }
 
   // Smoothly apply the current settings to the buses (called after any audio setting changes).
   A.apply = function () {
@@ -98,6 +217,8 @@
     } else {
       A.ctx.resume().catch(function () {}).then(function () {
         var t2 = A.ctx.currentTime; g.cancelScheduledValues(t2); g.setTargetAtTime(1, t2, 0.25);
+        if (running()) disarm(); else arm();
+        notify();
       });
     }
     if (ONA.music) ONA.music.sync();
@@ -150,7 +271,7 @@
   }
 
   ONA.sfx = {
-    unlock: function () { return A.ensure(); },
+    unlock: function () { return A.unlock(); },
     click: function () { tone(880, 0, 0.06, 'square', 0.06); },
     select: function () { tone(660, 0, 0.05, 'triangle', 0.12); },
     tick: function () { tone(1400 + Math.random() * 200, 0, 0.018, 'square', 0.025); },

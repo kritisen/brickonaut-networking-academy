@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { mobilePass } from './mobile_checks.mjs';
+import { mobilePass, mobileAudioPass } from './mobile_checks.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -276,6 +276,7 @@ try {
       writeFileSync(join(shotDir, 'mobile-all', 'metrics.json'), JSON.stringify(rep, null, 1));
     }
     console.log('Mobile pass:', Object.keys(rep).length, 'screen checks');
+    if (!MOBILE_AUDIT) console.log('Mobile audio (touch only):', JSON.stringify(await mobileAudioPass(H)));
   }
   full: {
   if (MOBILE_ONLY) break full;
@@ -864,6 +865,7 @@ try {
   // ---- Phones: every screen at 375/390/412 px portrait + landscape (tests/mobile_checks.mjs)
   const mob = await mobilePass(H);
   console.log('Mobile pass:', Object.keys(mob).length, 'screen checks');
+  console.log('Mobile audio (touch only):', JSON.stringify(await mobileAudioPass(H)));
   }
 } catch (e) {
   problems.push('driver: ' + e.message);

@@ -217,3 +217,91 @@ export async function mobilePass(h, { audit = false } = {}) {
   await send('Emulation.clearDeviceMetricsOverride');
   return report;
 }
+
+// Phone audio, touch only (no keyboard, no mouse): the first tap gets a running AudioContext with music; when the
+// context is stuck the "Tap for sound" chip shows (44 px, on screen) and tapping it fixes it; mute and N still
+// behave and never show the chip; a bfcache pageshow resumes; the old-iOS silent-loop session starts and stops with mute.
+// Headless Chromium can't reproduce iOS Safari's silent switch or its 'interrupted' state: check those on a device.
+export async function mobileAudioPass(h) {
+  const { send, evaluate, sleep, waitFor, problems, key } = h;
+  const fail = (m) => problems.push('mobile audio: ' + m);
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await evaluate(`ONA.store.setting('muted', false); ONA.store.setting('music', true); ONA.store.setting('sfx', true); true`);
+  await send('Page.reload'); await waitFor(`!!(window.ONA && ONA.game && ONA.game.screen === 'title')`); await sleep(500);
+  await evaluate(`window.__toastLog = []; new MutationObserver((ms) => ms.forEach((m) => m.addedNodes.forEach((n) => {
+    if (n.classList && n.classList.contains('toast')) window.__toastLog.push(n.textContent); }))).observe(document.getElementById('toasts'), { childList: true }); true`);
+  const tap = async (sel) => {
+    const c = await evaluate(`(() => { const n = document.querySelector('${sel}'); if (!n) return null; const r = n.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+    if (!c) { fail('nothing to tap at ' + sel); return; }
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y }] });
+    await sleep(40);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const ST = `(() => { const a = ONA.audio, c = document.getElementById('sound-chip'), r = c.getBoundingClientRect();
+    return { ctx: a.ctx ? a.ctx.state : null, playing: ONA.music.playing(), armed: a._armed(), chip: !c.hidden, w: Math.round(r.width), h: Math.round(r.height),
+      onScreen: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, muted: ONA.store.state.settings.muted, music: ONA.store.state.settings.music,
+      toasts: window.__toastLog.slice(), loop: a._loop() }; })()`;
+  const until = async (expr, ms = 2000) => { try { await waitFor(expr, ms); return true; } catch { return false; } };
+  const stuck = async () => { await evaluate(`ONA.audio.ctx.suspend().then(() => true)`); await sleep(1400); };
+
+  const pre = await evaluate(ST);
+  if (pre.ctx) fail('AudioContext exists before the first tap: ' + pre.ctx);
+  // 1. first tap (Begin training): running context + music, unlock listeners gone, no chip, "Music on" once
+  await tap('#btn-begin');
+  const ran = await until(`ONA.audio.ctx && ONA.audio.ctx.state === 'running' && ONA.music.playing()`);
+  await sleep(1300);
+  const s1 = await evaluate(ST);
+  if (!ran) fail('first tap did not get a running context with music: ' + JSON.stringify(s1));
+  if (s1.loop) fail('no silent <audio> loop should exist in a browser that does not need it: ' + JSON.stringify(s1.loop));
+  if (s1.armed || s1.chip) fail('after a successful first tap the unlock listeners should be gone and no chip shown: ' + JSON.stringify(s1));
+  if (s1.toasts.filter((t) => /^Music on/.test(t)).length !== 1) fail('"Music on" should show exactly once after the first tap: ' + JSON.stringify(s1.toasts));
+  // 2. stuck context: chip appears (~1 s), 44 px, on screen; no "Music on" claim; tapping it gets sound running
+  const nToasts = s1.toasts.length;
+  await stuck();
+  const s2 = await evaluate(ST);
+  if (!s2.chip || s2.w < 44 || s2.h < 44 || !s2.onScreen || !s2.armed) fail('a stuck context should re-arm the unlock and show a 44 px "Tap for sound" chip on screen: ' + JSON.stringify(s2));
+  if (s2.toasts.slice(nToasts).some((t) => /Music on|Sound on/.test(t))) fail('claimed sound is on while the context is suspended: ' + JSON.stringify(s2.toasts));
+  await tap('#sound-chip');
+  const fixed = await until(`ONA.audio.ctx.state === 'running' && document.getElementById('sound-chip').hidden && !ONA.audio._armed()`);
+  if (!fixed) fail('tapping "Tap for sound" should get the context running and hide the chip: ' + JSON.stringify(await evaluate(ST)));
+  // 3. mute: a stuck context never shows the chip while muted; unmuting by tap runs again and says "Sound on"
+  await tap('#topbar .mute-btn'); await sleep(200);
+  await stuck();
+  const s3 = await evaluate(ST);
+  if (!s3.muted || s3.chip) fail('muted: no chip even with a suspended context: ' + JSON.stringify(s3));
+  await tap('#topbar .mute-btn');
+  const unmuted = await until(`!ONA.store.state.settings.muted && ONA.audio.ctx.state === 'running' && ONA.music.playing()`);
+  await sleep(300);
+  const s4 = await evaluate(ST);
+  if (!unmuted || s4.chip || s4.toasts[s4.toasts.length - 1] !== 'Sound on') fail('unmute by tap should resume and toast "Sound on": ' + JSON.stringify(s4));
+  // 4. N: music off → no chip even when stuck; N again (a key gesture) → running, "Music on"
+  await key('n'); await sleep(200);
+  await stuck();
+  const s5 = await evaluate(ST);
+  if (s5.music || s5.chip || s5.playing) fail('N should turn music off, and then a stuck context shows no chip: ' + JSON.stringify(s5));
+  await key('n');
+  const nOn = await until(`ONA.store.state.settings.music && ONA.audio.ctx.state === 'running' && ONA.music.playing()`);
+  await sleep(300);
+  const s6 = await evaluate(ST);
+  if (!nOn || s6.chip || s6.toasts[s6.toasts.length - 1] !== 'Music on') fail('N back on should resume and toast "Music on": ' + JSON.stringify(s6));
+  // 5. back from bfcache: pageshow(persisted) resumes without a new gesture (the page already had one)
+  await evaluate(`ONA.audio.ctx.suspend().then(() => { window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })); return true; })`);
+  if (!(await until(`ONA.audio.ctx.state === 'running'`))) fail('pageshow should resume the context: ' + JSON.stringify(await evaluate(ST)));
+  // 6. old-iOS fallback: the silent <audio> loop plays with sound on and is removed on mute
+  await evaluate(`ONA.audio._forceSilentLoop = true; true`);
+  await tap('#topbar .mute-btn'); await sleep(200);
+  const m1 = await evaluate(ST);
+  await tap('#topbar .mute-btn');
+  const looping = await until(`(() => { const l = ONA.audio._loop(); return !!l && !l.paused && l.src && l.loop; })()`);
+  await tap('#topbar .mute-btn'); await sleep(200);
+  const m2 = await evaluate(ST);
+  if (m1.loop || !looping || m2.loop) fail('silent-loop session should be absent while muted, play once unmuted, and be removed on mute: ' + JSON.stringify({ m1: m1.loop, looping, m2: m2.loop }));
+  await evaluate(`ONA.audio._forceSilentLoop = false; true`);
+  await tap('#topbar .mute-btn'); await sleep(300);
+  const end = await evaluate(ST);
+  if (end.muted || end.loop || end.ctx !== 'running') fail('should end unmuted, running, with no silent loop: ' + JSON.stringify(end));
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await send('Emulation.clearDeviceMetricsOverride');
+  return { first: s1.ctx, chip: { w: s2.w, h: s2.h }, toasts: end.toasts };
+}
