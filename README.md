@@ -10,9 +10,17 @@ A space-themed trainer for general networking fundamentals, built to learn cloud
 
 ## Launch
 
-Open `index.html` in a browser. You can double-click it, since it runs straight from `file://`. There's no build step, server, network access, or dependency. It works offline in Chrome, Safari, Edge, and Firefox on a laptop or iPad.
+Open `index.html` in a browser. You can double-click it, since it runs straight from `file://`. There's no build step, server, network access, or dependency. It works offline in Chrome, Safari, Edge, and Firefox on a laptop, an iPad or a phone.
 
 Progress saves to `localStorage` in that browser.
+
+### On a phone
+
+The game also plays on phones, in portrait and landscape. Everything is tap-sized (44 px targets), and keyboard hints are swapped for tap wording on touch screens. The galaxy map pans sideways above a compact mission card. In a mission, a two-row HUD and a slim ship strip sit above the question, and **Lock in** sticks to the bottom of the screen. Sequence steps get larger ▲/▼ buttons and still drag with a finger. Diagram questions and concept figures scroll sideways inside their frame rather than shrinking to unreadable text. A focused number field scrolls clear of the on-screen keyboard. Journeys stack in portrait (turn the phone sideways for a bigger holo-sim) and sit side by side in landscape.
+
+| | |
+|---|---|
+| ![Question on an iPhone](screenshots/mobile/03-multiple-choice.jpg) | ![Concept figure after a wrong answer on an iPhone](screenshots/mobile/07-feedback-concept.jpg) |
 
 ## How to play
 
@@ -167,6 +175,7 @@ node tests/validate_questions.mjs   # question-bank gate (no deps)
 node tests/unit_store.mjs           # store unit tests: Leitner, partial credit, migrations, audio settings, moods, ship modules + tiers
 node tests/smoke_browser.mjs        # headless Chrome: plays missions, checks the ship, dialog a11y and music, fails on console errors
                                     #   --no-shots to skip screenshots, --shots-only 34,39 for a subset
+                                    #   --mobile-only for just the phone pass, --mobile-audit to report without failing
 ```
 
 `validate_questions.mjs` checks:
@@ -209,6 +218,16 @@ Its concept-figure checks:
 - Continue stays on screen on desktop, iPad landscape and iPad portrait
 - under reduced motion, figures have no probes or flowing dashes and are fully revealed
 
+Its phone checks (`tests/mobile_checks.mjs`, at 375×667, 390×844, 412×915 and 844×390 with touch emulation) cover every screen: title, galaxy map, briefing, each question type, feedback, debrief, journey player and library, Repair Bay, Captain's Log and Settings. On each one:
+- there is no horizontal page overflow, nothing visible past the viewport edge, and sideways scrolling only where it's designed in (map, diagrams, figures, prefix table)
+- the key controls are on screen and at least 44×44 px (journey progress dots: 44 px tall and at least 36 px wide)
+- the ship never covers the question or the feedback
+- the numeric field uses `inputmode="numeric"`, is at least 16 px (so iOS doesn't zoom), and sits in the upper half once focused
+- a real touch drag moves a sequence step and ▲ moves it back
+- diagram nodes are at least 32 px across, the journey stage fills the width, and no keyboard hints show on touch
+
+It saves 10 of those shots to `screenshots/mobile/` and the rest to `screenshots/mobile-all/` (gitignored).
+
 Its journey checks:
 - every journey opens (overlay is its own layer, `#app` inert, boss clock flag set), steps through with <kbd>→</kbd> (each step draws a scene, a packet callout and narration), reaches its check question and closes cleanly with <kbd>Esc</kbd>
 - the DNS journey end to end: launched from the order question's **Watch the journey first** button, Next button + arrow keys, node scan tooltip, autoplay on/off, replay, back; a wrong check answer records nothing, the right one records the completion (+40 XP, hint counted); Finish returns to the still-unanswered question; the feedback panel then offers **Learn: DNS resolution**
@@ -239,7 +258,8 @@ js/diagram.js charts.js  network diagrams; radar/line/bar charts
 js/game.js main.js    game controller and boot
 tests/                validator + headless smoke test + figures.html (concept figure gallery)
 source/networking_facts.md  the docs-checked facts behind the question bank
-screenshots/          README images (the smoke test writes all its shots here; extras are gitignored)
+screenshots/          README images (the smoke test writes all its shots here; extras are gitignored); mobile/ = phone set
+MOBILE_AUDIT.md       phone audit: what was wrong before the mobile pass and what changed
 ```
 
 ## Disclaimer
