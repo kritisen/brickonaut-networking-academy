@@ -276,7 +276,7 @@ try {
       writeFileSync(join(shotDir, 'mobile-all', 'metrics.json'), JSON.stringify(rep, null, 1));
     }
     console.log('Mobile pass:', Object.keys(rep).length, 'screen checks');
-    if (!MOBILE_AUDIT) console.log('Mobile audio (touch only):', JSON.stringify(await mobileAudioPass(H)));
+    if (!MOBILE_AUDIT) console.log('Mobile audio (taps, plus labelled keyboard-N checks):', JSON.stringify(await mobileAudioPass(H)));
   }
   full: {
   if (MOBILE_ONLY) break full;
@@ -865,7 +865,7 @@ try {
   // ---- Phones: every screen at 375/390/412 px portrait + landscape (tests/mobile_checks.mjs)
   const mob = await mobilePass(H);
   console.log('Mobile pass:', Object.keys(mob).length, 'screen checks');
-  console.log('Mobile audio (touch only):', JSON.stringify(await mobileAudioPass(H)));
+  console.log('Mobile audio (taps, plus labelled keyboard-N checks):', JSON.stringify(await mobileAudioPass(H)));
   }
 } catch (e) {
   problems.push('driver: ' + e.message);

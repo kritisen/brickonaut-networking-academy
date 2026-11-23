@@ -55,36 +55,53 @@
   // so a first gesture that doesn't start music (e.g. M muting everything) still gets the toast later.
   // Returns true when this call started music for the first time; { quiet: true } lets the caller show the
   // toast itself instead of its usual one (M / N), so there's never a duplicate.
-  // Never claim music is on before the context actually runs (phones can refuse to start it): "Music on"
-  // toasts wait for 'running'; if it doesn't get there, the "Tap for sound" chip shows instead.
-  var musicToastShown = false, MUSIC_ON_TOAST = 'Music on · N toggles music, M mutes all';
+  // Never claim music is on before it actually plays (phones can refuse to start audio): "Music on" is shown,
+  // and only then marked shown, once the context runs (and the old-iOS session loop plays, if it's needed).
+  // Every pending toast check carries a sequence number: mute / music off bump it, so stale checks stay silent.
+  var musicToastShown = false, musicToastPending = false, soundSeq = 0, MUSIC_ON_TOAST = 'Music on · N toggles music, M mutes all';
+  function musicOn() { var s = store.state.settings; return !!(s.music && !s.muted); }
+  function soundWanted() { return ONA.audio.soundWanted(store.state.settings); }
+  function soundLive() { return ONA.audio.running() && ONA.audio.loopOk(); }
+  function cancelSoundToasts() { soundSeq++; musicToastPending = false; }
+  function showMusicOn() {
+    if (musicToastShown || !musicOn()) return;
+    musicToastShown = true; musicToastPending = false;
+    toast(MUSIC_ON_TOAST);
+  }
+  G._soundToasts = function () { return { shown: musicToastShown, pending: musicToastPending, seq: soundSeq }; };   // tests
   function startAudio(opts) {
+    if (!soundWanted()) { ONA.audio.syncSession(false); ONA.music.sync(); syncSoundChip(); return false; }   // nothing to start
     sfx.unlock();
     ONA.audio.apply();
-    var first = ONA.music.sync() && !musicToastShown;
+    var started = ONA.music.sync();
+    var first = (started || musicToastPending) && !musicToastShown && musicOn();
     if (first) {
-      musicToastShown = true;
-      if (!(opts && opts.quiet)) whenSoundRuns(function () { toast(MUSIC_ON_TOAST); });
+      musicToastPending = true;
+      if (!(opts && opts.quiet)) whenSoundRuns(musicOn, showMusicOn);
     }
     syncSoundChip();
     return first;
   }
   G.startAudio = startAudio;
 
-  // Run `ok` once the context is running (now, or within ~0.6 s while a resume settles), else `blocked`.
-  function whenSoundRuns(ok, blocked) {
-    var A = ONA.audio, t0 = Date.now();
+  // Run `ok` once sound is live (now, or within ~0.6 s while a resume settles), else `blocked`; never if the
+  // settings no longer match (`cond`) or a mute / music change happened since (sequence number moved on).
+  function whenSoundRuns(cond, ok, blocked) {
+    var A = ONA.audio, t0 = Date.now(), seq = soundSeq;
     (function check() {
-      if (A.running()) return ok();
+      if (seq !== soundSeq || !cond()) return;
+      if (soundLive()) return ok();
       if (Date.now() - t0 > 600 || !A.ctx) { if (blocked) blocked(); return; }
       setTimeout(check, 40);
     })();
   }
 
-  // "Tap for sound": music is on, but the browser hasn't let the context run ~1 s after a gesture.
+  // "Tap for sound": music is on, but ~1 s after a gesture the context still isn't running (or the old-iOS
+  // session loop isn't playing). Also where a pending "Music on" gets shown, once sound really starts.
   var chipTimer = 0;
-  function needsTap() { var A = ONA.audio; return !!A.ctx && A.needsTap(store.state.settings, A.ctx.state, A.hidden || document.hidden); }
+  function needsTap() { var A = ONA.audio; return !!A.ctx && A.needsTap(store.state.settings, A.ctx.state, A.hidden || document.hidden, A.loopOk()); }
   function syncSoundChip() {
+    if (musicToastPending && soundLive()) showMusicOn();
     var chip = $('#sound-chip'); if (!chip) return;
     if (!needsTap()) { clearTimeout(chipTimer); chipTimer = 0; chip.hidden = true; return; }
     if (!chip.hidden || chipTimer) return;
@@ -1333,12 +1350,13 @@
       '<div class="modal-actions"><button class="btn primary" data-close data-autofocus>Done</button></div>');
     var b = $('#modal-body');
     $('#set-free').addEventListener('change', function (e) { store.setting('freeRoam', e.target.checked); if (G.screen === 'map') renderMap(); });
-    $('#set-sound').addEventListener('change', function (e) { store.setting('muted', !e.target.checked); startAudio(); applyAudio(); syncAudioControls(); if (e.target.checked) sfx.click(); });
+    // switching sound on starts audio inside this gesture; switching it off only stops things (never startAudio)
+    $('#set-sound').addEventListener('change', function (e) { store.setting('muted', !e.target.checked); if (!e.target.checked) cancelSoundToasts(); startAudio(); applyAudio(); syncAudioControls(); if (e.target.checked) sfx.click(); });
     ['music', 'sfx'].forEach(function (k) {
-      $('#set-' + k).addEventListener('change', function (e) { store.setting(k, e.target.checked); startAudio(); applyAudio(); syncAudioControls(); if (k === 'sfx' && e.target.checked) sfx.click(); });
+      $('#set-' + k).addEventListener('change', function (e) { store.setting(k, e.target.checked); if (k === 'music' && !e.target.checked) cancelSoundToasts(); startAudio(); applyAudio(); syncAudioControls(); if (k === 'sfx' && e.target.checked) sfx.click(); });
       var range = $('#set-' + k + '-vol');
       // live while dragging (no save per pixel), saved once on release
-      range.addEventListener('input', function () { store.setting(k + 'Vol', range.value / 100, { noSave: true }); startAudio(); ONA.audio.apply(); syncAudioControls(); });
+      range.addEventListener('input', function () { store.setting(k + 'Vol', range.value / 100, { noSave: true }); if (soundWanted()) startAudio(); ONA.audio.apply(); syncAudioControls(); });
       range.addEventListener('change', function () { store.setting(k + 'Vol', range.value / 100); if (k === 'sfx') sfx.select(); });
     });
     syncAudioControls();
@@ -1455,11 +1473,14 @@
   // M / mute button: mute-all (music + SFX). The music and SFX settings underneath are kept.
   function toggleMute() {
     var muted = store.setting('muted', !store.state.settings.muted);
-    var firstMusic = startAudio({ quiet: true });   // also stops / restarts the old-iOS silent loop for the session
+    cancelSoundToasts();
+    if (muted) { ONA.audio.syncSession(false); applyAudio(); syncAudioControls(); toast('All sound off · M to turn back on'); return; }
+    if (!soundWanted()) { applyAudio(); syncAudioControls(); toast('Sound on · music and effects are off in Settings'); return; }
+    var firstMusic = startAudio({ quiet: true });   // also (re)starts the old-iOS session loop inside this gesture
     applyAudio(); syncAudioControls();
-    if (!muted) sfx.click();
-    if (muted) toast('All sound off · M to turn back on');
-    else whenSoundRuns(function () { toast(firstMusic ? MUSIC_ON_TOAST : 'Sound on'); }, function () { toast(SOUND_BLOCKED); });
+    sfx.click();
+    whenSoundRuns(function () { return !store.state.settings.muted; },
+      function () { if (firstMusic) showMusicOn(); else toast('Sound on'); }, function () { toast(SOUND_BLOCKED); });
   }
 
   // N: music only. If everything is muted, turning music on also lifts the mute-all.
@@ -1467,10 +1488,11 @@
     var s = store.state.settings, on = !(s.music && !s.muted);
     store.setting('music', on);
     if (on && s.muted) store.setting('muted', false);
+    cancelSoundToasts();
+    if (!on) { startAudio(); applyAudio(); syncAudioControls(); toast('Music off · N to turn back on'); return; }   // startAudio only stops here if nothing is wanted
     var firstMusic = startAudio({ quiet: true });
     applyAudio(); syncAudioControls();
-    if (!on) toast('Music off · N to turn back on');
-    else whenSoundRuns(function () { toast(firstMusic ? MUSIC_ON_TOAST : 'Music on'); }, function () { toast(SOUND_BLOCKED); });
+    whenSoundRuns(musicOn, function () { if (firstMusic) showMusicOn(); else toast('Music on'); }, function () { toast(SOUND_BLOCKED); });
   }
   G.toggleMusic = toggleMusic;
   var SOUND_BLOCKED = 'Sound didn\'t start · tap "Tap for sound"';

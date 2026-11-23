@@ -215,6 +215,21 @@ test('audio.needsTap: the "Tap for sound" chip only when music is wanted, the co
   assert.equal(ONA.audio.needsTap({ music: true, muted: true }, 'suspended', false), false);
   assert.equal(ONA.audio.needsTap({ music: false, muted: false }, 'suspended', false), false);
   assert.equal(ONA.audio.needsTap(on, null, false), false);                  // no context yet: nothing to unlock
+  // old-iOS fallback in use: a running context isn't enough if the session loop isn't playing
+  assert.equal(ONA.audio.needsTap(on, 'running', false, false), true);
+  assert.equal(ONA.audio.needsTap(on, 'running', false, true), false);
+  assert.equal(ONA.audio.needsTap(on, 'running', true, false), false);
+});
+
+test('audio.soundWanted: the session loop / unlock only matter when something can play', () => {
+  const { ONA } = boot();
+  const w = (o) => ONA.audio.soundWanted({ muted: false, music: true, sfx: true, ...o });
+  assert.equal(w({}), true);
+  assert.equal(w({ music: false }), true);                                   // SFX alone still need a session
+  assert.equal(w({ sfx: false }), true);
+  assert.equal(w({ music: false, sfx: false }), false);
+  assert.equal(w({ muted: true }), false);
+  assert.equal(ONA.audio.soundWanted(null), false);
 });
 
 test('audio.sessionMode: audioSession where it exists, a silent loop on older iOS, nothing elsewhere', () => {

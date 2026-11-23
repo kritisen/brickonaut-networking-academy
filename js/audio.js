@@ -37,9 +37,13 @@
   };
   var levelOpts = function () { return { journey: !!(ONA.game && ONA.game.journeyOpen) }; };
 
-  // Pure: should the "Tap for sound" chip show? Music wanted, a context exists but isn't running, page visible.
-  A.needsTap = function (s, state, hidden) {
-    return !!(s && s.music && !s.muted && state && state !== 'running' && state !== 'closed' && !hidden);
+  // Pure: is any sound wanted at all? (not muted, and music or SFX on)
+  A.soundWanted = function (s) { return !!(s && !s.muted && (s.music || s.sfx)); };
+  // Pure: should the "Tap for sound" chip show? Music wanted, page visible, and either the context isn't running
+  // or (old-iOS fallback in use) the silent session loop isn't playing. `loopOk` = true when no loop is needed.
+  A.needsTap = function (s, state, hidden, loopOk) {
+    if (!(s && s.music && !s.muted && state && state !== 'closed' && !hidden)) return false;
+    return state !== 'running' || loopOk === false;
   };
   // Pure: how this browser gets a playback audio session (so the iOS silent switch doesn't mute Web Audio).
   //   'audio-session' = navigator.audioSession (Safari 16.4+) · 'silent-loop' = older iOS · 'none' = not needed
@@ -51,8 +55,18 @@
     return ios ? 'silent-loop' : 'none';
   };
 
+  // iOS playback session (Safari 16.4+): must be set BEFORE the AudioContext is constructed or resumed.
+  A._forceSilentLoop = false;   // tests: exercise the old-iOS fallback in Chromium
+  function mode() { return A._forceSilentLoop ? 'silent-loop' : A.sessionMode(typeof navigator !== 'undefined' ? navigator : null); }
+  function setSessionType() {
+    if (mode() !== 'audio-session') return;
+    try { if (navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { /* read-only in some builds */ }
+  }
+  setSessionType();             // at load, when supported
+
   // Create the context + bus graph. Call only from a user gesture (or after one).
   A.ensure = function () {
+    setSessionType();           // and again, defensively, before any construction / resume
     if (A.ctx) {
       if (A.ctx.state === 'suspended' && !A.hidden) A.ctx.resume().catch(function () {});
       return A.ctx;
@@ -84,18 +98,19 @@
   // ---------------------------------------------------------------- mobile unlock
   var GESTURES = ['pointerup', 'touchend', 'click', 'keydown'], armed = false, loopEl = null, loopUrl = null;
   A.onchange = null;            // game.js: re-check the "Tap for sound" chip / pending "Music on" toast
-  A._forceSilentLoop = false;   // tests: exercise the old-iOS fallback in Chromium
   function notify() { if (A.onchange) A.onchange(); }
   function running() { return !!A.ctx && A.ctx.state === 'running'; }
   A.running = running;
-  // Unlocked for good: the context runs and, on old iOS with sound on, the silent loop is really playing.
-  function ready() { return running() && (!loopEl || !loopEl.paused); }
+  // The old-iOS silent loop exists only while sound is wanted (not muted, music or SFX on) and the page is visible.
+  function loopWanted() { return mode() === 'silent-loop' && A.soundWanted(settings()) && !A.hidden; }
+  function loopOk() { return !loopWanted() || (!!loopEl && !loopEl.paused); }
+  A.loopOk = loopOk;
+  // Unlocked for good: the context runs and, if the fallback loop is wanted, it really plays.
+  function ready() { return running() && loopOk(); }
+  function settle() { if (ready()) disarm(); else if (!A.hidden) arm(); }
   function onState() {
-    if (ready()) disarm();
-    else if (!A.hidden && A.ctx && A.ctx.state !== 'closed') {
-      arm();
-      if (A.ctx.state === 'interrupted') A.ctx.resume().catch(function () {});   // iOS: resumes once the call / lock ends
-    }
+    if (A.ctx && A.ctx.state === 'interrupted' && !A.hidden) A.ctx.resume().catch(function () {});   // iOS: call / lock screen
+    settle();
     notify();
   }
 
@@ -109,37 +124,53 @@
     for (i = 0; i < n; i++) v.setUint8(44 + i, 128);
     return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
+  function onLoopPlaying() { settle(); notify(); }
+  function onLoopLost() { if (loopWanted()) arm(); notify(); }                   // paused by the OS: the next gesture replays it
+  function onLoopError() { var want = loopWanted(); stopLoop(); if (want) arm(); notify(); }   // broken element: rebuilt on the next gesture
+  // Only from a user gesture: create (or replay) the loop.
   function startLoop() {
-    if (loopEl) { if (loopEl.paused) loopEl.play().catch(function () {}); return; }
-    loopUrl = silentWavUrl();
-    loopEl = document.createElement('audio');
-    loopEl.loop = true; loopEl.setAttribute('playsinline', ''); loopEl.setAttribute('aria-hidden', 'true');
-    loopEl.preload = 'auto'; loopEl.src = loopUrl;
-    loopEl.addEventListener('playing', function () { if (ready()) disarm(); });
-    loopEl.play().catch(function () {});
+    if (!loopEl) {
+      loopUrl = silentWavUrl();
+      loopEl = document.createElement('audio');
+      loopEl.loop = true; loopEl.setAttribute('playsinline', ''); loopEl.setAttribute('aria-hidden', 'true');
+      loopEl.preload = 'auto'; loopEl.src = loopUrl;
+      loopEl.addEventListener('playing', onLoopPlaying);
+      loopEl.addEventListener('pause', onLoopLost);
+      loopEl.addEventListener('error', onLoopError);
+    }
+    if (loopEl.paused) {
+      var el = loopEl, p = el.play();
+      if (p && p.catch) p.catch(function () { if (el === loopEl) { arm(); notify(); } });   // refused: retry on the next gesture
+    }
   }
   function stopLoop() {
     if (!loopEl) return;
-    loopEl.pause(); loopEl.removeAttribute('src'); loopEl.load();
-    loopEl = null;
+    var el = loopEl; loopEl = null;
+    el.removeEventListener('playing', onLoopPlaying); el.removeEventListener('pause', onLoopLost); el.removeEventListener('error', onLoopError);
+    el.pause(); el.removeAttribute('src'); el.load();
     if (loopUrl) { URL.revokeObjectURL(loopUrl); loopUrl = null; }
   }
-  // Playback session: set the audio-session type, or (old iOS) keep the silent loop playing while sound is on.
-  function session() {
-    var mode = A._forceSilentLoop ? 'silent-loop' : A.sessionMode(typeof navigator !== 'undefined' ? navigator : null);
-    if (mode === 'audio-session') { try { navigator.audioSession.type = 'playback'; } catch (e) { /* read-only in some builds */ } }
-    if (mode === 'silent-loop') { if (settings().muted) stopLoop(); else startLoop(); }
-    else stopLoop();
-    return mode;
+  // Keep the playback session in line with the settings. `gesture`: we're inside a user gesture, so the loop may
+  // (re)start; outside one it can only be stopped (and the unlock re-armed if it's wanted but missing).
+  function syncSession(gesture) {
+    setSessionType();
+    if (!loopWanted()) stopLoop();
+    else if (gesture) startLoop();
+    else if (!loopOk()) arm();
+    notify();
+    return mode();
   }
-  A.syncSession = session;   // game.js calls this after mute / unmute (inside the same gesture)
+  A.syncSession = syncSession;   // game.js: after mute / music / SFX changes
   A._loop = function () { return loopEl ? { paused: loopEl.paused, src: !!loopEl.getAttribute('src'), loop: loopEl.loop } : null; };
+  A._loopEl = function () { return loopEl; };   // tests
 
-  // Synchronous unlock, safe to call from any user gesture: create/resume the context and start a zero-gain buffer.
+  // Synchronous unlock, safe to call from any user gesture: session first, then create/resume the context and
+  // start a zero-gain buffer (iOS counts a buffer started inside the gesture as the unlock).
   A.unlock = function () {
+    setSessionType();
     var c = A.ensure(); if (!c) return null;
-    session();
-    if (c.state !== 'running' && !A.hidden) c.resume().then(function () { if (ready()) disarm(); notify(); }).catch(function () {});
+    syncSession(true);
+    if (c.state !== 'running' && !A.hidden) c.resume().then(function () { settle(); notify(); }).catch(function () {});
     try {
       var src = c.createBufferSource(), g = c.createGain();
       src.buffer = c.createBuffer(1, 1, 22050); g.gain.value = 0;
@@ -147,14 +178,14 @@
       src.onended = function () { src.disconnect(); g.disconnect(); };
       src.start(0);
     } catch (e) { /* context closed */ }
-    if (ready()) disarm(); else arm();       // still suspended (resume pending or refused): retry on the next gesture
+    settle();                    // still suspended (resume pending or refused): retry on the next gesture
     return c;
   };
   function onGesture(e) {
     if (!e.isTrusted) return;                                    // scripted events are never user activation
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey || /^(Tab|Shift|Control|Alt|Meta|Escape)$/.test(e.key))) return;
-    if (!A.ctx) return;            // the game's first-gesture handler creates the context (so M / N first keeps its meaning)
-    A.unlock();
+    if (!A.ctx || !A.soundWanted(settings())) return;            // nothing wanted: don't start anything (the first-gesture
+    A.unlock();                                                  // handler in game.js creates the context)
   }
   function arm() {
     if (armed || typeof document === 'undefined') return;
@@ -167,11 +198,14 @@
     GESTURES.forEach(function (t) { document.removeEventListener(t, onGesture, true); });
   }
   A._armed = function () { return armed; };
-  // Back from the background (tab switch, bfcache restore): try to resume; if that needs a gesture, re-arm.
+  // Back from the background (tab switch, bfcache restore): try to resume; arm the gesture unlock synchronously
+  // whenever we're not fully ready (Safari can leave resume() pending until the next gesture).
   A.tryResume = function () {
-    if (!A.ctx || A.hidden || A.ctx.state === 'running' || A.ctx.state === 'closed') return;
-    A.ctx.resume().then(function () { if (running()) disarm(); else arm(); notify(); }).catch(function () { arm(); notify(); });
-    if (!running()) arm();
+    if (!A.ctx || A.hidden || A.ctx.state === 'closed') return;
+    if (ready()) { disarm(); notify(); return; }
+    if (!running()) A.ctx.resume().then(function () { settle(); notify(); }).catch(function () { arm(); notify(); });
+    if (loopWanted() && loopEl && loopEl.paused) loopEl.play().catch(function () { arm(); notify(); });
+    arm();
     notify();
   };
   if (typeof window !== 'undefined' && window.addEventListener) {
@@ -213,14 +247,17 @@
     g.cancelScheduledValues(t);
     if (A.hidden) {
       g.setTargetAtTime(0, t, 0.08);
+      stopLoop();                // the fallback loop never outlives a visible page (recreated on the next gesture)
       hideTimer = setTimeout(function () { if (A.hidden && A.ctx.state === 'running') A.ctx.suspend().catch(function () {}); }, 450);
     } else {
+      if (!ready()) arm();       // synchronously: Safari can keep resume() pending until a gesture
       A.ctx.resume().catch(function () {}).then(function () {
         var t2 = A.ctx.currentTime; g.cancelScheduledValues(t2); g.setTargetAtTime(1, t2, 0.25);
-        if (running()) disarm(); else arm();
+        settle();
         notify();
       });
     }
+    notify();
     if (ONA.music) ONA.music.sync();
   };
   if (typeof document !== 'undefined') {
