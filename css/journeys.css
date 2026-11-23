@@ -246,8 +246,9 @@
   .jr-tip, .jr-tip.below, .jr-tip.left, .jr-tip.right, .jr-tip.left.below, .jr-tip.right.below { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; transform: none; }
   .jr-scan-hint::after { content: " · turn sideways for a bigger view"; }
   .jr-ctrl { margin: 12px -12px -12px; padding: 8px 12px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
-  .jr-dots { order: -1; flex: 1 1 100%; flex-wrap: nowrap; justify-content: space-between; gap: 0; }
-  .jr-dot { flex: 1 1 0; width: auto; max-width: 44px; height: 44px; }
+  /* every dot keeps a full 44x44 target: long journeys wrap onto a second row of dots */
+  .jr-dots { order: -1; flex: 1 1 100%; flex-wrap: wrap; justify-content: center; gap: 0; }
+  .jr-dot { flex: 0 0 44px; width: 44px; height: 44px; }
   .jr-ctrl-r { margin-left: auto; gap: 6px; }
   .jr-ctrl .btn { padding: .6em .85em; }
   .jl-world-t { font-size: 19px; }

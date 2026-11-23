@@ -173,6 +173,10 @@
   html:not(.motion-full) .cfig .cn-ring, html:not(.motion-full) .cfig .split { animation: none !important; }
 }
 
+/* Touch screens and landscape phones: the Concept toggle keeps a 44 px target */
+@media (hover: none) and (pointer: coarse) { .fb-concept > summary { min-height: 44px; } }
+@media (max-height: 500px) and (orientation: landscape) { .fb-concept > summary { min-height: 44px; } }
+
 /* Phones: figures keep a readable size and scroll sideways inside their frame instead of shrinking */
 @media (max-width: 600px) {
   .fc-fig { overflow-x: auto; overscroll-behavior-x: contain; }

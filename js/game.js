@@ -1478,7 +1478,8 @@
     }
     document.addEventListener('pointerdown', firstGesture, true);
     document.addEventListener('keydown', firstGesture, true);
-    function resumeOnActivation() {
+    function resumeOnActivation(e) {
+      if (!e.isTrusted) return;   // only real taps / clicks are user activation; scripted clicks never start audio
       var c = ONA.audio.ctx;
       if (!c || c.state !== 'suspended' || document.hidden) return;
       startAudio();

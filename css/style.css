@@ -653,7 +653,6 @@ table.best .star-ico { width: 15px; height: 15px; }
   .play { overflow-y: auto; }
   .q-card { overflow: visible; }
   .feedback.open { overflow: visible; }
-  .feedback { transform: translateY(20px); }   /* stacked under the card: slide up, not in from the side (no sideways scroll) */
   .kpis { grid-template-columns: repeat(3, 1fr); }
   .radar-card, .trend-card, .weak-card, .best-card, .topics-card, .time-card { grid-column: span 12; }
   .bays { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
@@ -1042,6 +1041,7 @@ table.best .star-ico { width: 15px; height: 15px; }
   .xp-val::after { content: " XP"; font-size: 10px; color: var(--dim); }
   .fuel { height: 6px; gap: 2px; }
   .fuel i { border-radius: 2px; }
+  .feedback { transform: translateY(20px); }   /* stacked under the card: slide up, not in from the side (no sideways scroll) */
   .play { grid-template-rows: auto auto; align-content: start; row-gap: 8px; padding-bottom: env(safe-area-inset-bottom); }
   .q-card { max-height: none; }
   .sp-note { display: none; }
@@ -1064,7 +1064,7 @@ table.best .star-ico { width: 15px; height: 15px; }
   .num-row input { font-size: 34px; }
   .num-prefix { font-size: 34px; }
   /* room to scroll the field above the on-screen keyboard (a spacer, not padding: padding would lift the sticky Lock in) */
-  .play:has(#num-input:focus)::after { content: ""; grid-column: 1 / -1; height: 45vh; }
+  .play:has(#num-input:focus)::after { content: ""; grid-column: 1 / -1; height: 100vh; }
   .navcomp { overflow-x: auto; }
   .navcomp table { font-size: 12px; }
   .navcomp th, .navcomp td { padding: 4px 6px; }
@@ -1164,13 +1164,14 @@ table.best .star-ico { width: 15px; height: 15px; }
   .sp-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sp-note { display: none; }
   .q-card, .feedback { grid-column: 2; }
+  .feedback { transform: translateY(20px); }
   .q-card { grid-row: 1; padding: 14px 18px 0; max-height: none; }
   .feedback { grid-row: 2; }
   .q-prompt { margin: 10px 0 12px; font-size: 18px; }
   .q-actions { position: sticky; bottom: 0; z-index: 3; margin: 12px -18px 0; padding: 8px 18px 10px; border-radius: 0 0 var(--r) var(--r); background: linear-gradient(180deg, rgba(8, 12, 36, 0), rgba(8, 12, 36, .94) 32%); }
   .choice { min-height: 48px; padding: 10px 12px; font-size: 15px; }
   /* room to scroll the field above the on-screen keyboard (a spacer, not padding: padding would lift the sticky Lock in) */
-  .play:has(#num-input:focus)::after { content: ""; grid-column: 1 / -1; height: 60vh; }
+  .play:has(#num-input:focus)::after { content: ""; grid-column: 1 / -1; height: 100vh; }
   .feedback.open { padding: 16px 18px; }
   /* dialog + modal */
   #dialog { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
