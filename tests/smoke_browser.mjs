@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Headless browser smoke test + screenshot capture.
-// Usage: node tests/smoke_browser.mjs [--chrome /path/to/chrome] [--no-shots]
+// Usage: node tests/smoke_browser.mjs [--chrome /path/to/chrome] [--no-shots] [--mobile-only] [--mobile-audit]
+//   --mobile-only   only the phone viewport pass (tests/mobile_checks.mjs) on a seeded save; --mobile-audit reports, never fails
 // Opens index.html over file://, plays real missions through the keyboard, fails on any console error
 // or uncaught exception, and saves screenshots to screenshots/.
 import { spawn } from 'node:child_process';
@@ -8,6 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mobilePass } from './mobile_checks.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -19,11 +21,13 @@ const CHROME = chromeArg >= 0 ? args[chromeArg + 1] : [
 const SHOTS = !args.includes('--no-shots');
 const onlyArg = args.indexOf('--shots-only');          // e.g. --shots-only 19,20  (prefix filter)
 const ONLY = onlyArg >= 0 ? args[onlyArg + 1].split(',') : null;
+const MOBILE_AUDIT = args.includes('--mobile-audit');
+const MOBILE_ONLY = MOBILE_AUDIT || args.includes('--mobile-only');
 let VW = 1440;
 const PORT = 9300 + Math.floor(Math.random() * 500);
 const shotDir = join(root, 'screenshots');
 if (!CHROME) { console.error('No Chrome found; pass --chrome'); process.exit(2); }
-if (SHOTS) mkdirSync(shotDir, { recursive: true });
+if (SHOTS) ['', 'mobile', 'mobile-all'].forEach((d) => mkdirSync(join(shotDir, d), { recursive: true }));
 
 const profile = mkdtempSync(join(tmpdir(), 'ona-chrome-'));
 const chrome = spawn(CHROME, [
@@ -258,6 +262,20 @@ try {
   await send('Page.reload'); await waitFor(`!!(window.ONA && ONA.game && ONA.game.screen === 'title')`);
   console.log('Loaded', url);
   await sleep(900);
+  const H = { send, evaluate, sleep, shot, waitFor, clearDialogs, answer, problems, key };
+  if (MOBILE_ONLY) {
+    // seed a little history so the Repair Bay, Captain's Log and debrief have content
+    await evaluate(`ONA.store.setting('freeRoam', true); true`); await key('Enter'); await sleep(400);
+    for (const [lvl, acc] of [[1, 0.7], [2, 0.6], [4, 0.75]]) {
+      await evaluate(`ONA.game.run = null; ONA.game.show('map'); ONA.game.startRun(ONA.util.level(${lvl}), 'mission'); true`);
+      await playRun({ accuracy: acc }); await waitFor(`ONA.game.screen === 'debrief'`);
+    }
+    const rep = await mobilePass(H, { audit: MOBILE_AUDIT });
+    if (MOBILE_AUDIT) writeFileSync(join(shotDir, 'mobile-all', 'metrics.json'), JSON.stringify(rep, null, 1));
+    console.log('Mobile pass:', Object.keys(rep).length, 'screen checks');
+  }
+  full: {
+  if (MOBILE_ONLY) break full;
   await shot('01-title');
   // Autoplay rules: no AudioContext may exist before the first user gesture.
   const preGesture = await evaluate(AUDIO_STATE);
@@ -839,6 +857,11 @@ try {
   audioLog.stingDispose = { during: { live: st1.stingLive, buses: st1.stingBuses }, afterMute: { live: st2.stingLive, buses: st2.stingBuses } };
 
   console.log('Audio:', JSON.stringify(audioLog));
+
+  // ---- Phones: every screen at 375/390/412 px portrait + landscape (tests/mobile_checks.mjs)
+  const mob = await mobilePass(H);
+  console.log('Mobile pass:', Object.keys(mob).length, 'screen checks');
+  }
 } catch (e) {
   problems.push('driver: ' + e.message);
 } finally {
