@@ -6,7 +6,7 @@
   var MISSION_SIZE = 12;
   var REPAIR_SIZE = 15;
   var DRILL_SIZE = 10;
-  var ORDER_ROW = 62;
+  var ORDER_ROW = 62;   // row pitch; refreshed from the list's --order-row (CSS) each time a sequence renders
 
   var G = (ONA.game = { screen: null, run: null, selected: 1, dialogOpen: false, modalOpen: false });
 
@@ -424,12 +424,22 @@
     placeShip(mapShipPos, 0, false);
     if (!U.level(G.selected)) G.selected = at.id;
     renderMissionCard();
+    panMap(G.selected, false);
 
     $$('#galaxy .planet').forEach(function (p) {
       p.addEventListener('click', function () { selectLevel(+p.dataset.level, true); });
       p.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); if (G.selected === +p.dataset.level) launchSelected(); else selectLevel(+p.dataset.level, true); } });
     });
   }
+
+  // On phones the map is wider than the screen (#map-stage scrolls sideways): centre the given world.
+  function panMap(id, smooth) {
+    var stage = $('#map-stage'), svg = $('#galaxy'), l = U.level(id);
+    if (!stage || !svg || !l || stage.scrollWidth <= stage.clientWidth + 1) return;
+    var x = l.map.x / 1600 * svg.getBoundingClientRect().width - stage.clientWidth / 2;
+    stage.scrollTo({ left: Math.max(0, x), behavior: smooth && !U.reducedMotion() ? 'smooth' : 'auto' });
+  }
+  window.addEventListener('resize', function () { if (G.screen === 'map') panMap(G.selected, false); });
 
   function placeShip(p, angle, flying) {
     var s = $('#map-ship'); if (!s) return;
@@ -465,6 +475,7 @@
     sfx.select();
     $$('#galaxy .planet').forEach(function (p) { p.classList.toggle('selected', +p.dataset.level === id); });
     renderMissionCard();
+    panMap(id, true);
     if (fly && store.unlocked(l) && playable(l)) {
       store.state.shipAt = id; store.save();
       flyShip(shipAnchor(l));
@@ -653,7 +664,7 @@
 
   var RENDER = {
     mc: function (p, body) {
-      $('#q-hint').innerHTML = 'Press <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> then <kbd>Enter</kbd>';
+      $('#q-hint').innerHTML = U.touch() ? 'Tap an answer, then Lock in' : 'Press <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> then <kbd>Enter</kbd>';
       var list = el('div', { class: 'choices', role: 'radiogroup', 'aria-labelledby': 'q-prompt' });
       p.choices.forEach(function (c, k) {
         var b = el('button', { class: 'choice', role: 'radio', 'aria-checked': 'false', 'data-k': k, html: '<span class="key">' + (k + 1) + '</span><span class="txt">' + fmt(c) + '</span>' });
@@ -664,7 +675,7 @@
       body.appendChild(list);
     },
     multi: function (p, body) {
-      $('#q-hint').innerHTML = 'Select all that apply · <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> toggle';
+      $('#q-hint').innerHTML = 'Select all that apply' + (U.touch() ? '' : ' · <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> toggle');
       G.run.sel = [];
       var list = el('div', { class: 'choices multi', role: 'group', 'aria-labelledby': 'q-prompt' });
       p.choices.forEach(function (c, k) {
@@ -675,7 +686,7 @@
       body.appendChild(list);
     },
     numeric: function (p, body) {
-      $('#q-hint').innerHTML = 'Type a number · <kbd>Enter</kbd> to lock in';
+      $('#q-hint').innerHTML = U.touch() ? 'Type a number, then Lock in' : 'Type a number · <kbd>Enter</kbd> to lock in';
       var wrap = el('div', { class: 'numeric' });
       var row = el('label', { class: 'num-row' });
       var inp = el('input', { id: 'num-input', type: 'text', inputmode: 'numeric', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Answer' + (p.unit ? ' in ' + p.unit : ''), placeholder: '—' });
@@ -684,6 +695,7 @@
       row.appendChild(el('span', { class: 'num-unit', text: p.unit && p.unit !== 'prefix' ? p.unit : p.unit === 'prefix' ? 'prefix length' : '' }));
       wrap.appendChild(row);
       inp.addEventListener('input', function () { inp.value = inp.value.replace(/[^\d.,\/]/g, ''); setReady(parseNum(inp.value) != null); });
+      inp.addEventListener('focus', function () { keepAboveKeyboard(inp); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (!G.run.answered && parseNum(inp.value) != null) submit(); else if (G.run.answered) next(); } });
       var q = curQ();
       if (q.topic === 'cidr' || p.calc || /dbx-(aws|azure|scenario)/.test(q.topic)) {
@@ -697,11 +709,13 @@
       setTimeout(function () { inp.focus({ preventScroll: true }); }, 50);
     },
     order: function (p, body) {
-      $('#q-hint').innerHTML = 'Drag to reorder · or <kbd>1</kbd>–<kbd>' + p.items.length + '</kbd> pick, <kbd>↑</kbd><kbd>↓</kbd> move';
+      $('#q-hint').innerHTML = U.touch() ? 'Drag a step, or use ▲ ▼' : 'Drag to reorder · or <kbd>1</kbd>–<kbd>' + p.items.length + '</kbd> pick, <kbd>↑</kbd><kbd>↓</kbd> move';
       var order;
       do { order = U.shuffle(p.items.map(function (_, k) { return k; })); } while (order.every(function (v, k) { return v === k; }) && p.items.length > 1);
       G.run.sel = order; G.run.orderPick = null;
       var list = el('ol', { class: 'order-list', 'aria-labelledby': 'q-prompt' });
+      body.appendChild(list);
+      ORDER_ROW = parseFloat(getComputedStyle(list).getPropertyValue('--order-row')) || 62;
       list.style.height = p.items.length * ORDER_ROW + 'px';
       p.items.forEach(function (txt, k) {
         var li = el('li', { class: 'order-item', 'data-k': k, tabindex: '0', html:
@@ -713,12 +727,11 @@
         li.addEventListener('focus', function () { G.run.orderPick = k; layoutOrder(); });
         attachDrag(li, k, list);
       });
-      body.appendChild(list);
       layoutOrder();
       setReady(true);
     },
     diagram: function (p, body) {
-      $('#q-hint').innerHTML = 'Click a component · or <kbd>1</kbd>–<kbd>' + p.diagram.nodes.length + '</kbd>';
+      $('#q-hint').innerHTML = U.touch() ? 'Tap a component' : 'Click a component · or <kbd>1</kbd>–<kbd>' + p.diagram.nodes.length + '</kbd>';
       var wrap = el('div', { class: 'diagram-wrap', html: ONA.diagram.render(p.diagram, { interactive: true, numbered: true, idPrefix: 'q' }) });
       body.appendChild(wrap);
       $$('.node[data-node]', wrap).forEach(function (n) {
@@ -755,6 +768,12 @@
       li.classList.toggle('picked', G.run.orderPick === k);
     });
   }
+  window.addEventListener('resize', function () {
+    var list = $('#q-body .order-list'); if (!list || !G.run || !Array.isArray(G.run.sel)) return;
+    var row = parseFloat(getComputedStyle(list).getPropertyValue('--order-row')) || 62;
+    if (row === ORDER_ROW) return;
+    ORDER_ROW = row; list.style.height = list.children.length * ORDER_ROW + 'px'; layoutOrder();
+  });
   function moveOrder(k, dir) {
     if (G.run.answered) return;
     var o = G.run.sel, pos = o.indexOf(k), np = pos + dir;
@@ -788,6 +807,26 @@
     }
     li.addEventListener('pointerup', end);
     li.addEventListener('pointercancel', end);
+  }
+
+  // Phones: the on-screen keyboard covers the lower ~half of the screen. Scroll the play area so a focused
+  // field sits in the part that stays visible (visualViewport when the browser reports it, else the top half).
+  function keepAboveKeyboard(inp) {
+    if (!U.touch()) return;
+    var scroller = inp.closest('.play'); if (!scroller) return;
+    function fit() {
+      if (document.activeElement !== inp) return;
+      var vv = window.visualViewport, visible = vv ? Math.min(vv.height, window.innerHeight) : window.innerHeight;
+      var limit = Math.min(visible - 16, window.innerHeight * 0.5), r = inp.getBoundingClientRect();
+      if (r.bottom > limit) scroller.scrollTop += r.bottom - limit;
+      else if (r.top < 70) scroller.scrollTop -= 70 - r.top;
+    }
+    setTimeout(fit, 60); setTimeout(fit, 400);
+    if (window.visualViewport && !inp._vv) {
+      inp._vv = true;
+      window.visualViewport.addEventListener('resize', fit);
+      inp.addEventListener('blur', function off() { window.visualViewport.removeEventListener('resize', fit); inp._vv = false; inp.removeEventListener('blur', off); });
+    }
   }
 
   function parseNum(v) {
@@ -1259,12 +1298,12 @@
     var s = store.state.settings;
     modal('<h2 class="modal-title">Ship settings</h2>' +
       toggleRow('set-free', 'Free roam', 'Unlock every world, whatever your star ratings.', s.freeRoam) +
-      toggleRow('set-sound', 'All sound', 'Master switch for music and effects (<kbd>M</kbd>). Everything is synthesized in the browser.', !s.muted) +
-      audioRow('music', 'Music', 'Ambient soundtrack that shifts with each area (<kbd>N</kbd>).') +
+      toggleRow('set-sound', 'All sound', 'Master switch for music and effects<span class="kbd-only"> (<kbd>M</kbd>)</span>. Everything is synthesized in the browser.', !s.muted) +
+      audioRow('music', 'Music', 'Ambient soundtrack that shifts with each area<span class="kbd-only"> (<kbd>N</kbd>)</span>.') +
       audioRow('sfx', 'Sound effects', 'Answer, warp and UI sounds.') +
       '<div class="set-row"><div><b>Motion</b><span>Auto follows your OS "reduce motion" setting.</span></div><div class="seg" role="radiogroup" aria-label="Motion">' +
       ['auto', 'reduce', 'full'].map(function (m) { return '<button role="radio" aria-checked="' + (s.motion === m) + '" data-motion="' + m + '" class="' + (s.motion === m ? 'on' : '') + '">' + { auto: 'Auto', reduce: 'Reduced', full: 'Full' }[m] + '</button>'; }).join('') + '</div></div>' +
-      '<h3 class="modal-sub">Keyboard</h3><ul class="keys"><li><kbd>1</kbd>–<kbd>9</kbd> pick an answer or diagram node</li><li><kbd>Enter</kbd> lock in / continue / launch</li><li><kbd>↑</kbd><kbd>↓</kbd> move the picked step in sequence questions</li><li><kbd>←</kbd><kbd>→</kbd> cycle worlds on the galaxy map</li><li><kbd>M</kbd> mute all · <kbd>N</kbd> music on/off · <kbd>Esc</kbd> pause / close</li></ul>' +
+      '<h3 class="modal-sub kbd-only">Keyboard</h3><ul class="keys kbd-only"><li><kbd>1</kbd>–<kbd>9</kbd> pick an answer or diagram node</li><li><kbd>Enter</kbd> lock in / continue / launch</li><li><kbd>↑</kbd><kbd>↓</kbd> move the picked step in sequence questions</li><li><kbd>←</kbd><kbd>→</kbd> cycle worlds on the galaxy map</li><li><kbd>M</kbd> mute all · <kbd>N</kbd> music on/off · <kbd>Esc</kbd> pause / close</li></ul>' +
       '<div class="modal-actions"><button class="btn primary" data-close data-autofocus>Done</button></div>');
     var b = $('#modal-body');
     $('#set-free').addEventListener('change', function (e) { store.setting('freeRoam', e.target.checked); if (G.screen === 'map') renderMap(); });
@@ -1439,6 +1478,13 @@
     }
     document.addEventListener('pointerdown', firstGesture, true);
     document.addEventListener('keydown', firstGesture, true);
+    function resumeOnActivation() {
+      var c = ONA.audio.ctx;
+      if (!c || c.state !== 'suspended' || document.hidden) return;
+      startAudio();
+    }
+    document.addEventListener('touchend', resumeOnActivation, true);
+    document.addEventListener('click', resumeOnActivation, true);
     var start = (location.hash || '').replace('#', '');
     show(['map', 'log', 'bay'].indexOf(start) >= 0 ? start : 'title');
   };
