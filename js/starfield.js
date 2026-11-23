@@ -51,8 +51,8 @@
   }
 
   function resize() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth; H = window.innerHeight;
+    DPR = ONA.util.canvasDpr(W, H);
     canvas.width = W * DPR; canvas.height = H * DPR;
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     g.setTransform(DPR, 0, 0, DPR, 0, 0);

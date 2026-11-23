@@ -3,7 +3,7 @@
 /* ---------- entry buttons ---------- */
 .btn.jr-learn { display: inline-flex; align-items: center; gap: 8px; padding: .55em 1em; border-radius: 12px; font-weight: 800; font-size: 14px; color: #e8ddff;
   background: linear-gradient(180deg, rgba(120, 80, 220, .35), rgba(60, 30, 140, .35)); border: 1px solid rgba(183, 148, 246, .6); box-shadow: 0 0 18px rgba(183, 148, 246, .25); }
-.btn.jr-learn:hover { box-shadow: 0 0 26px rgba(183, 148, 246, .5); }
+@media (hover: hover) { .btn.jr-learn:hover { box-shadow: 0 0 26px rgba(183, 148, 246, .5); } }
 .btn.jr-learn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
 .btn.jr-learn svg path { fill: currentColor; stroke: none; }
 .fb-learn { margin-top: 14px; }
@@ -125,7 +125,7 @@
 .jn.denied .jn-halo { fill: var(--rose); }
 .jn-sel { fill: none; stroke: #fff; stroke-width: 2; stroke-dasharray: 4 5; opacity: 0; }
 .jn.sel .jn-sel, .jn:focus-visible .jn-sel { opacity: .9; animation: jrSpin 6s linear infinite; transform-box: fill-box; transform-origin: center; }
-.jn:hover .jn-halo { opacity: .22; }
+@media (hover: hover) { .jn:hover .jn-halo { opacity: .22; } }
 .jn-l { fill: #fff; font: 800 13.5px var(--font); }
 .jn-s { fill: #aeb9e8; font: 600 11px var(--mono); }
 .jn.active .jn-l { fill: #fff2c4; }
@@ -185,7 +185,7 @@
 .jl-world-t .eyebrow { display: block; font-size: 10.5px; color: var(--accent); }
 .jl-planet { width: 44px; height: 44px; flex: none; }
 .jl-planet svg { width: 100%; height: 100%; }
-.jl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.jl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 16px; }
 .jl-card { overflow: hidden; display: flex; flex-direction: column; border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .jl-card.done { box-shadow: var(--shadow), 0 0 30px color-mix(in srgb, var(--accent) 25%, transparent); }
 .jl-thumb { aspect-ratio: 720 / 400; background: radial-gradient(130% 100% at 50% 0%, rgba(30, 50, 130, .45), rgba(4, 8, 26, .9)); border-bottom: 1px solid var(--line); pointer-events: none; }
@@ -203,7 +203,7 @@
 .journeys-card { grid-column: span 12; }
 .jl-meter { height: 8px; border-radius: 6px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-bottom: 12px; }
 .jl-meter span { display: block; height: 100%; width: calc(var(--v) * 100%); background: linear-gradient(90deg, var(--violet), var(--cyan)); box-shadow: 0 0 12px rgba(183, 148, 246, .6); }
-.jl-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 6px 18px; }
+.jl-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 6px 18px; }
 .jl-list li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(255, 255, 255, .05); }
 .jl-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .18); flex: none; }
 .jl-list li.done .jl-dot { background: var(--mint); box-shadow: 0 0 8px var(--mint); }
@@ -232,4 +232,51 @@
   html:not(.motion-full) .jr-trail { stroke-dashoffset: 0 !important; }
   html:not(.motion-full) .jr-trail-flow, html:not(.motion-full) .jr-ping { display: none; }
   html:not(.motion-full) .jr-badge, html:not(.motion-full) .jr-block { opacity: 1 !important; }
+}
+
+/* ---------- phones ---------- */
+@media (hover: none) and (pointer: coarse) { .jr-dot { height: 44px; } .jr-close { width: 44px; height: 44px; } }
+@media (max-width: 600px) {
+  .jr { padding: max(6px, env(safe-area-inset-top)) 6px max(6px, env(safe-area-inset-bottom)); }
+  .jr-box { max-height: calc(100vh - 12px); padding: 12px 12px 12px; }
+  .jr-title { font-size: 19px; margin: 2px 0 8px; }
+  .jr-steptitle { font-size: 19px; }
+  .jr-narr { font-size: 15px; }
+  /* the scanner tooltip docks along the bottom of the stage instead of floating over a tiny scene */
+  .jr-tip, .jr-tip.below, .jr-tip.left, .jr-tip.right, .jr-tip.left.below, .jr-tip.right.below { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; transform: none; }
+  .jr-scan-hint::after { content: " · turn sideways for a bigger view"; }
+  .jr-ctrl { margin: 12px -12px -12px; padding: 8px 12px max(10px, env(safe-area-inset-bottom)); gap: 8px; }
+  .jr-dots { order: -1; flex: 1 1 100%; flex-wrap: nowrap; justify-content: space-between; gap: 0; }
+  .jr-dot { flex: 1 1 0; width: auto; max-width: 44px; height: 44px; }
+  .jr-ctrl-r { margin-left: auto; gap: 6px; }
+  .jr-ctrl .btn { padding: .6em .85em; }
+  .jl-world-t { font-size: 19px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .jr { padding: max(6px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 6px max(10px, env(safe-area-inset-left)); }
+  .jr-box { max-height: calc(100vh - 12px); padding: 8px 14px 10px; overflow: hidden; }
+  .jr-head .eyebrow { display: none; }
+  .jr-title { font-size: 17px; margin: 0 0 6px; }
+  .jr-main { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
+  .jr-side { overflow-y: auto; gap: 8px; }
+  .jr-steptitle { font-size: 17px; margin-top: -4px; }
+  .jr-say { padding: 8px 10px; }
+  .jr-portrait { width: 40px; height: 40px; }
+  .jr-narr { font-size: 14px; line-height: 1.45; }
+  .jr-dot { width: 44px; }
+  /* the stage is sized by the height that's left, so the controls never slide under it */
+  .jr-stage-wrap { justify-self: start; max-width: 100%; }
+  .jr-stage, .jr.figure-mode .jr-stage, .jr.checking .jr-stage { height: calc(100vh - 150px); width: auto; max-width: 100%; min-height: 0; aspect-ratio: 720 / 400; }
+  .jr-scan-hint { display: none; }
+  .jr-ctrl { flex-wrap: nowrap; }
+  .jr-ctrl .btn { padding: .55em .9em; }
+  .jr-dots { flex-wrap: nowrap; gap: 0; }
+  .jr-ctrl { position: static; margin: 8px 0 0; padding: 6px 0 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@supports (height: 100dvh) {
+  @media (max-width: 600px) { .jr-box { max-height: calc(100dvh - 12px); } }
+  @media (max-height: 500px) and (orientation: landscape) {
+    .jr-box { max-height: calc(100dvh - 12px); }
+    .jr-stage, .jr.figure-mode .jr-stage, .jr.checking .jr-stage { height: calc(100dvh - 150px); }
+  }
 }

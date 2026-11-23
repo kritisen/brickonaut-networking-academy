@@ -4,8 +4,8 @@
   var canvas, g, parts = [], raf = 0, last = 0, W, H;
 
   function resize() {
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
     W = window.innerWidth; H = window.innerHeight;
+    var dpr = ONA.util.canvasDpr(W, H);
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
