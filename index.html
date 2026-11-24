@@ -32,7 +32,7 @@
       <button class="nav-btn" data-go="bay"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8V21h3.2l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>Repair Bay<span id="tb-bay-badge" class="badge hidden">0</span></button>
       <button class="nav-btn" data-go="journeys"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>Journeys</button>
       <button class="nav-btn" data-go="log"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Captain's Log</button>
-      <button class="icon-btn settings-btn" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
+      <button class="icon-btn settings-btn" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.84 9.17 L19.23 10.41 L21.49 10.55 L21.49 13.45 L19.23 13.59 L18.84 14.83 L18.23 15.99 L19.73 17.69 L17.69 19.73 L15.99 18.23 L14.83 18.84 L13.59 19.23 L13.45 21.49 L10.55 21.49 L10.41 19.23 L9.17 18.84 L8.01 18.23 L6.31 19.73 L4.27 17.69 L5.77 15.99 L5.16 14.83 L4.77 13.59 L2.51 13.45 L2.51 10.55 L4.77 10.41 L5.16 9.17 L5.77 8.01 L4.27 6.31 L6.31 4.27 L8.01 5.77 L9.17 5.16 L10.41 4.77 L10.55 2.51 L13.45 2.51 L13.59 4.77 L14.83 5.16 L15.99 5.77 L17.69 4.27 L19.73 6.31 L18.23 8.01Z"/><circle cx="12" cy="12" r="3.2"/></svg></button>
       <button class="icon-btn mute-btn" aria-label="Mute sound"></button>
     </nav>
   </header>
@@ -44,14 +44,15 @@
         <div id="title-planet" class="title-planet"></div>
         <div id="title-ship" class="title-orbit" aria-hidden="true"></div>
         <div class="title-copy">
-          <div class="eyebrow glow">Flight school for packet pilots</div>
+          <div class="eyebrow glow title-eyebrow"><img class="eyebrow-mark" src="assets/databricks-mark.svg" alt="" width="14" height="15">Flight school for Databricks packet pilots</div>
           <h1 class="logo"><span>Orbital</span><span>Network</span><span>Academy</span></h1>
           <p id="title-sub" class="title-sub"></p>
           <button id="btn-begin" class="btn primary big" data-autofocus>Begin training</button>
-          <div class="title-hint"><kbd>Enter</kbd> to start · <kbd>M</kbd> mute all · <kbd>N</kbd> music · works offline</div>
+          <div class="title-hint"><kbd>Enter</kbd> to start · <kbd>M</kbd> mute all · <kbd>N</kbd> music</div>
         </div>
       </div>
-      <footer class="title-foot">6 worlds · 114 networking questions (Databricks facts docs-sourced) · Leitner Repair Bay · Captain's Log telemetry</footer>
+      <footer class="title-foot"><span id="title-count" class="title-count">114 questions: Basic and Databricks networking</span>
+        <span class="made-with">Made with <span class="dbx-heart" role="img" aria-label="love"><svg class="heart" viewBox="0 0 24 22" aria-hidden="true" focusable="false"><path d="M12 21.2 10.4 19.8C4.6 14.6.8 11.2.8 6.9.8 3.5 3.5.8 6.9.8c1.9 0 3.8.9 5.1 2.4C13.3 1.7 15.2.8 17.1.8c3.4 0 6.1 2.7 6.1 6.1 0 4.3-3.8 7.7-9.6 12.9z"/></svg><img src="assets/databricks-mark.svg" alt="" width="12" height="13"></span> by Kriti Sen Sharma</span></footer>
     </section>
 
     <!-- GALAXY MAP -->
@@ -65,6 +66,7 @@
     <section class="screen" id="screen-mission" aria-label="Mission">
       <div id="mission-planet" class="mission-planet" aria-hidden="true"></div>
       <div class="hud glass">
+        <button id="hud-map" class="btn ghost small hud-map" type="button" aria-label="Map: back to the galaxy map" aria-keyshortcuts="Escape" title="Back to the galaxy map (Esc)"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7"/></svg><span>Map</span></button>
         <div class="hud-left">
           <div id="hud-planet" class="hud-planet" aria-hidden="true"></div>
           <div><div id="hud-mode" class="eyebrow"></div><div id="hud-title" class="hud-title"></div></div>
@@ -131,6 +133,7 @@
   <!-- Engine -->
   <script src="js/util.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/brand.js"></script>
   <script src="js/ship.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/music.js"></script>

@@ -239,6 +239,46 @@ async function driveHullToZero() {
 const SEQ_STATE = `(() => ({ screen: ONA.game.screen, dialog: ONA.game.dialogOpen, powerDown: document.getElementById('screen-mission').classList.contains('power-down'),
   danger: ONA.starfield.isDanger(), seq: ONA.game.seqActive(), alarms: window.__alarms, run: ONA.game.run ? ONA.game.run.mode : null,
   debriefTitle: (document.querySelector('#screen-debrief .db-title') || {}).textContent || null }))()`;
+// UI polish + branding screenshots (screenshots/polish/): title desktop + phone, the map's Databricks marks, a level
+// card, the boss card, a mission with the Map button and the branded ship, a journey mid-autoplay with the speed control.
+async function polishShot(name) {
+  if (!SHOTS) return;
+  await sleep(400);
+  const m = await send('Page.getLayoutMetrics');
+  const vw = m.cssVisualViewport.clientWidth, vh = m.cssVisualViewport.clientHeight;
+  const r = await send('Page.captureScreenshot', { format: 'jpeg', quality: 85, clip: { x: 0, y: 0, width: vw, height: vh, scale: Math.min(1, 1600 / Math.max(vw * 2, vh * 2)) } });
+  writeFileSync(join(shotDir, 'polish', name + '.jpg'), Buffer.from(r.data, 'base64'));
+  console.log('  screenshot', 'screenshots/polish/' + name + '.jpg');
+}
+async function polishShots() {
+  if (!SHOTS) return;
+  mkdirSync(join(shotDir, 'polish'), { recursive: true });
+  const fr = await evaluate(`ONA.store.state.settings.freeRoam`);
+  await evaluate(`ONA.store.setting('freeRoam', true); true`);      // the default for new players: every world open
+  await evaluate(`ONA.game.run = null; ONA.game.selected = 2; ONA.game.show('title'); ONA.game.show('map'); true`); await sleep(1200);
+  await polishShot('03-level-card');
+  await evaluate(`ONA.game.selected = 5; ONA.game.show('title'); ONA.game.show('map'); true`); await sleep(1200);
+  await polishShot('02-galaxy-map-databricks-marks');
+  await evaluate(`ONA.game.selected = 6; ONA.game.show('title'); ONA.game.show('map'); true`); await sleep(1200);
+  await polishShot('04-boss-card');
+  await evaluate(`ONA.game.show('title'); true`); await sleep(900);
+  await polishShot('01-title-desktop');
+  await viewport(390, 844, true); await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }); await sleep(600);
+  await polishShot('01-title-phone');
+  await evaluate(`ONA.game.startRun(ONA.util.level(4), 'mission'); true`); await clearDialogs(); await waitFor(`!!document.querySelector('#q-body')`); await sleep(900);
+  await polishShot('05-mission-map-button-phone');
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false }); await viewport(VW, 900); await sleep(900);
+  await polishShot('05-mission-map-button-ship');
+  await evaluate(`ONA.game.run = null; ONA.game.show('map'); ONA.store.setting('journeySpeed', 1); ONA.journeys.open('dns', { src: 'library' }); true`);
+  await sleep(await evaluate(`ONA.journeys.dwellMs(ONA.journeys.get('dns').steps[0], 1) + 900`));
+  if (!(await evaluate(`ONA.journeys.state().auto && ONA.journeys.state().step === 1`))) problems.push('polish shot: journey should be mid-autoplay on step 2');
+  await polishShot('06-journey-autoplay-speed');
+  await key('Escape'); await sleep(200);
+  await evaluate(`ONA.store.setting('freeRoam', ${fr}); true`);
+  const foot = await evaluate(`(() => { const f = document.querySelector('.title-foot'); return { count: document.getElementById('title-count').textContent, heart: (f.querySelector('.dbx-heart') || {}).getAttribute && f.querySelector('.dbx-heart').getAttribute('aria-label'), made: f.querySelector('.made-with').textContent.replace(/\\s+/g, ' ').trim() }; })()`);
+  if (foot.count !== '114 questions: Basic and Databricks networking' || foot.heart !== 'love' || foot.made !== 'Made with by Kriti Sen Sharma') problems.push('title footer wrong: ' + JSON.stringify(foot));
+}
+
 const shipProblems = (tag, st) => {
   if (!st.ok) return problems.push(tag + ': no ship rendered in the mission panel');
   if (st.hidden !== 'true') problems.push(tag + ': ship panel must be aria-hidden');
@@ -414,6 +454,33 @@ try {
   if (atDialog !== 3 || afterRM.alarms !== 3 || afterRM.debriefTitle !== 'Ship disabled' || afterRM.seq) problems.push('reduced-motion power-down: alarms must all fire before the dialog: ' + JSON.stringify({ atDialog, afterRM }));
   await evaluate(`ONA.store.setting('motion', 'auto'); ONA.game.run = null; ONA.game.show('map'); true`);
 
+  // On-screen Map button = the Esc key: pause menu (Resume keeps the run), Abort returns to the galaxy map,
+  // and it cancels a power-down sequence in flight exactly like Esc → Abort does (a).
+  await evaluate(`ONA.game.startRun(ONA.util.level(1), 'mission'); true`);
+  await clearDialogs(); await waitFor(`!!document.querySelector('#q-body') && !ONA.game.run.answered`);
+  const mapBtn = await evaluate(`(() => { const b = document.getElementById('hud-map'), r = b.getBoundingClientRect();
+    return { text: b.textContent.trim(), name: b.getAttribute('aria-label'), w: r.width, h: r.height, tab: b.tabIndex, visible: !!b.offsetParent }; })()`);
+  if (mapBtn.text !== 'Map' || !/galaxy map/i.test(mapBtn.name || '') || !mapBtn.visible || mapBtn.tab < 0 || mapBtn.h < 36) problems.push('mission Map button missing or unlabelled: ' + JSON.stringify(mapBtn));
+  await evaluate(`document.getElementById('hud-map').click(); true`); await waitFor('ONA.game.modalOpen');
+  const pausedVia = await evaluate(`(() => ({ title: document.querySelector('#modal-title').textContent, abort: !!document.querySelector('#modal-body [data-act="abort"]') }))()`);
+  if (pausedVia.title !== 'Paused' || !pausedVia.abort) problems.push('Map button should open the same pause menu as Esc: ' + JSON.stringify(pausedVia));
+  await evaluate(`document.querySelector('#modal-body [data-close]').click(); true`); await sleep(150);
+  if (!(await evaluate(`ONA.game.screen === 'mission' && !!ONA.game.run && !ONA.game.modalOpen`))) problems.push('Resume after the Map button should keep the mission running');
+  await evaluate(`document.getElementById('hud-map').focus(); true`); await key('Enter'); await waitFor('ONA.game.modalOpen');   // keyboard path
+  await evaluate(`document.querySelector('#modal-body [data-act="abort"]').click(); true`);
+  await waitFor(`ONA.game.screen === 'map'`);
+  if (!(await evaluate(`ONA.game.run === null && !!document.querySelector('#galaxy')`))) problems.push('Map button → Abort should return to the galaxy map with no run');
+  await evaluate(`document.getElementById('screen-debrief').innerHTML = ''; window.__alarms = 0; true`);
+  await driveHullToZero(); await sleep(150);
+  await evaluate(`document.getElementById('hud-map').click(); true`); await waitFor('ONA.game.modalOpen');
+  await evaluate(`document.querySelector('#modal-body [data-act="abort"]').click(); true`);
+  await waitFor(`ONA.game.screen === 'map'`);
+  const navD = await evaluate(SEQ_STATE); await sleep(3200); const lateD = await evaluate(SEQ_STATE);
+  if (lateD.screen !== 'map' || lateD.dialog || lateD.powerDown || lateD.danger || lateD.seq || lateD.alarms !== navD.alarms || lateD.debriefTitle)
+    problems.push('Map button during the power-down should cancel it like Esc: ' + JSON.stringify({ navD, lateD }));
+  console.log('Map button:', JSON.stringify({ ...mapBtn, powerDownCancelled: !lateD.seq && !lateD.powerDown }));
+  await evaluate(`ONA.game.run = null; ONA.game.show('map'); true`);
+
   // Seed more history: replay missions 1–3, a drill, and the boss (free roam) with varied accuracy.
   await evaluate(`ONA.store.setting('freeRoam', true); true`);
   const plays = [[1, 0.8], [2, 0.6], [2, 0.85], [3, 0.7], [4, 0.75], [5, 0.65]];
@@ -511,6 +578,35 @@ try {
   }
   console.log('Journeys stepped through:', jIds.length);
 
+  // Autoplay is on when a journey opens (off under reduced motion), the speed button cycles 1× → 1.5× → 2× and
+  // persists, and the scene ship is the shared ship art with the Databricks mark.
+  await evaluate(`ONA.store.setting('journeySpeed', 1); ONA.journeys.open('dns', { src: 'library' }); true`); await sleep(150);
+  const jAuto = await evaluate(`(() => { const b = document.getElementById('jr-speed'), r = b.getBoundingClientRect();
+    return { auto: ${JST}.auto, autoBtn: document.getElementById('jr-auto').getAttribute('aria-pressed'), speed: ${JST}.speed, label: b.textContent, name: b.getAttribute('aria-label'), w: r.width, h: r.height,
+      ship: !!document.querySelector('#jr-stage .jb-ship svg.ship .dbx-mark'), legacy: !!document.querySelector('#jr-stage .jb-ship .ship-art') }; })()`);
+  if (!jAuto.auto || jAuto.autoBtn !== 'true') problems.push('journey autoplay should be on when a journey opens: ' + JSON.stringify(jAuto));
+  if (jAuto.speed !== 1 || jAuto.label !== '1×' || !/speed/i.test(jAuto.name || '')) problems.push('journey speed control wrong at open: ' + JSON.stringify(jAuto));
+  if (!jAuto.ship || jAuto.legacy) problems.push('journey ship should be the shared ship art with the Databricks mark: ' + JSON.stringify(jAuto));
+  const stepAt0 = await evaluate(`${JST}.step`);
+  await sleep(await evaluate(`ONA.journeys.dwellMs(ONA.journeys.get('dns').steps[0], 1) + 500`));
+  const stepAfter = await evaluate(`${JST}.step`);
+  if (stepAfter !== stepAt0 + 1) problems.push(`journey autoplay should advance one step after the 1× dwell: ${stepAt0} → ${stepAfter}`);
+  const speeds = [];
+  for (let c = 0; c < 3; c++) { await evaluate(`document.getElementById('jr-speed').click(); true`); await sleep(60); speeds.push(await evaluate(`[document.getElementById('jr-speed').textContent, ONA.store.state.settings.journeySpeed, ${JST}.auto]`)); }
+  if (JSON.stringify(speeds.map((x) => x.slice(0, 2))) !== JSON.stringify([['1.5×', 1.5], ['2×', 2], ['1×', 1]]) || !speeds.every((x) => x[2])) problems.push('journey speed button should cycle 1.5× → 2× → 1× and keep autoplay running: ' + JSON.stringify(speeds));
+  await evaluate(`document.getElementById('jr-speed').click(); true`); await key('Escape'); await sleep(120);
+  await evaluate(`ONA.journeys.open('tcp', { src: 'library' }); true`); await sleep(120);
+  const kept = await evaluate(`[document.getElementById('jr-speed').textContent, ${JST}.speed]`);
+  if (kept[0] !== '1.5×' || kept[1] !== 1.5) problems.push('journey speed should persist to the next journey: ' + JSON.stringify(kept));
+  const legOn = await evaluate(`(() => { const t = document.querySelector('#jr-stage .jr-trail'); return t ? t.style.animationDuration : 'none'; })()`);
+  await key('Escape'); await sleep(120);
+  await evaluate(`ONA.store.setting('motion', 'reduce'); ONA.journeys.open('dns', { src: 'library' }); true`); await sleep(120);
+  const rmAuto = await evaluate(`${JST}.auto`);
+  if (rmAuto) problems.push('journey autoplay should start paused under reduced motion');
+  await key('Escape'); await sleep(120);
+  await evaluate(`ONA.store.setting('motion', 'auto'); ONA.store.setting('journeySpeed', 1); true`);
+  console.log('Journey autoplay:', JSON.stringify({ openAuto: jAuto.auto, reducedMotionAuto: rmAuto, speeds: speeds.map((x) => x[0]), persisted: kept[0], trailAt1_5x: legOn }));
+
   // DNS journey end to end, launched from the order question ("Watch the journey first"), then the question itself.
   const xpBefore = await evaluate(`ONA.store.state.xp`);
   await evaluate(`ONA.game.run = null; ONA.game.startRun(null, 'drill', [ONA.util.qById('l1-dns-path')], 'Journey'); true`);
@@ -592,6 +688,8 @@ try {
   // Map after progress, Repair Bay, Captain's Log
   await evaluate(`ONA.store.setting('freeRoam', false); ONA.game.run = null; ONA.game.selected = 4; ONA.game.show('map'); true`);
   await sleep(1500); await shot('11-galaxy-map-progress');
+  await polishShots();
+  await evaluate(`ONA.store.setting('freeRoam', false); ONA.game.run = null; ONA.game.selected = 4; ONA.game.show('map'); true`); await sleep(600);
   await evaluate(`ONA.game.show('bay'); true`); await sleep(900); await shot('12-repair-bay');
   // Repair Bay = hangar: one damaged module on the docked ship (and one callout + list row) per module in the bay
   const bayShip = await evaluate(`(() => { const want = ONA.ship.damagedModules(ONA.store); const svg = document.querySelector('#hangar svg.ship');

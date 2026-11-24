@@ -156,7 +156,7 @@
   A.ship = function (attrs) {
     if (ONA.ship && ONA.store && ONA.store.state) return ONA.ship.svg({ loadout: ONA.ship.loadout(ONA.store), compact: true, attrs: attrs || '' });
     var u = uid();
-    return '<svg class="art ship-art" viewBox="-70 -34 140 68" aria-hidden="true">' +
+    return '<svg class="art ship-art" viewBox="-70 -34 140 68" ' + (attrs || '') + ' aria-hidden="true">' +
       '<defs><linearGradient id="sh' + u + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f7ff"/><stop offset=".55" stop-color="#a9b6e6"/><stop offset="1" stop-color="#4a5590"/></linearGradient>' +
       '<linearGradient id="fl' + u + '" x1="1" x2="0"><stop offset="0" stop-color="#fff"/><stop offset=".3" stop-color="#7cf7ff"/><stop offset="1" stop-color="#4fd1ff" stop-opacity="0"/></linearGradient>' +
       '<linearGradient id="cp' + u + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#bff4ff"/><stop offset="1" stop-color="#1b4f8f"/></linearGradient></defs>' +

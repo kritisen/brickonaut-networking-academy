@@ -30,6 +30,10 @@
     // leaving the mission for a menu cancels any run-ending sequence still in flight (alarms, dialog, debrief)
     if (name !== 'mission' && name !== 'debrief') cancelSeq();
     if (G.screen === name) return;
+    // focus left on a control of the screen we're leaving (e.g. the mission's Map button) must not survive into the
+    // next visit of that screen, where Enter would press it again instead of locking in an answer
+    var ae = document.activeElement;
+    if (ae && ae.closest && ae.closest('.screen') && !ae.closest('#screen-' + name)) ae.blur();
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s.id === 'screen-' + name); s.setAttribute('aria-hidden', s.id === 'screen-' + name ? 'false' : 'true'); });
     document.body.dataset.screen = name;
     G.screen = name;
@@ -390,6 +394,7 @@
       '<g><g transform="translate(-48 -20)">' + art.ship('width="96" height="40"') + '</g>' +
       (U.reducedMotion() ? '' : '<animateMotion dur="16s" repeatCount="indefinite" rotate="auto" path="' + orbit + '"/>') + '</g></svg>';
     $('#title-planet').innerHTML = art.planet('earth');
+    $('#title-count').textContent = ONA.QUESTIONS.length + ' questions: Basic and Databricks networking';
     var played = store.state.sessions.length > 0;
     $('#btn-begin').textContent = played ? 'Continue mission' : 'Begin training';
     $('#title-sub').textContent = played
@@ -444,12 +449,14 @@
     });
     main.concat(bonus).forEach(function (l) {
       var r = planetR(l), un = store.unlocked(l) && playable(l), rec = store.levelRec(l.id);
-      var cls = 'planet' + (un ? '' : ' locked') + (G.selected === l.id ? ' selected' : '') + (l.boss ? ' boss' : '') + (l.bonus ? ' bonus' : '');
+      var dbx = U.isDbxWorld(l) && ONA.brand;
+      var cls = 'planet' + (un ? '' : ' locked') + (G.selected === l.id ? ' selected' : '') + (l.boss ? ' boss' : '') + (l.bonus ? ' bonus' : '') + (dbx ? ' dbx' : '');
       svg += '<g class="' + cls + '" data-level="' + l.id + '" transform="translate(' + l.map.x + ' ' + l.map.y + ')" role="button" tabindex="0" ' +
-        'aria-label="Mission ' + l.id + ': ' + esc(l.name) + (un ? ', ' + rec.bestStars + ' stars' : ', locked') + '" style="--accent:' + l.accent + '">' +
+        'aria-label="Mission ' + l.id + ': ' + esc(l.name) + (dbx ? ', Databricks networking' : '') + (un ? ', ' + rec.bestStars + ' stars' : ', locked') + '" style="--accent:' + l.accent + '">' +
         '<circle class="hit" r="' + (r + 30) + '"/>' +
         '<g class="reticle"><circle r="' + (r + 18) + '"/><path d="M0 ' + -(r + 26) + 'v12M0 ' + (r + 26) + 'v-12M' + -(r + 26) + ' 0h12M' + (r + 26) + ' 0h-12"/></g>' +
         '<svg x="' + -r * 1.55 + '" y="' + -r * 1.55 + '" width="' + r * 3.1 + '" height="' + r * 3.1 + '" viewBox="-110 -110 220 220" class="planet-art">' + art.planet(l.art).replace(/^<svg[^>]*>|<\/svg>$/g, '') + '</svg>' +
+        (dbx ? '<g class="pl-dbx" aria-hidden="true"><circle cx="' + (r * 0.74).toFixed(1) + '" cy="' + (-r * 0.74).toFixed(1) + '" r="17"/>' + ONA.brand.markAt(r * 0.74, -r * 0.74, 20) + '</g>' : '') +
         (un ? '' : '<g class="lock">' + '<circle r="20"/>' + '<g transform="translate(-12 -12)"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></g></g>') +
         '<text class="pl-num" y="' + (r + 40) + '">' + (l.bonus ? 'BONUS' : 'MISSION ' + String(l.id).padStart(2, '0')) + '</text>' +
         '<text class="pl-name" y="' + (r + 64) + '">' + esc(l.name) + '</text>' +
@@ -528,7 +535,6 @@
   function renderMissionCard() {
     var l = U.level(G.selected), rec = store.levelRec(l.id), qs = questionsFor(l.id);
     var un = store.unlocked(l), canPlay = un && qs.length > 0;
-    var types = {}; qs.forEach(function (q) { types[q.type] = (types[q.type] || 0) + 1; });
     var prev = ONA.LEVELS.filter(function (x) { return !x.bonus && x.id < l.id; }).sort(function (a, b) { return b.id - a.id; })[0];
     var lockMsg = !qs.length ? 'Awaiting transmission. This world has no questions yet.'
       : 'Earn ' + starsHtml(2) + ' on <b>' + esc(prev ? prev.name : '') + '</b> to unlock, or enable <b>Free roam</b> in Settings.';
@@ -543,9 +549,7 @@
       '<div><span class="k">Best XP</span><b>' + (rec.bestScore || '—') + '</b></div>' +
       '<div><span class="k">Bank</span><b>' + qs.length + ' Q</b></div>' +
       '</div>' +
-      '<div class="mc-flags">' + (l.boss ? '<span class="chip danger">⏱ ' + Math.round((l.timeLimitSec || 900) / 60) + ' min boss clock</span>' : '') +
-      '<span class="chip">🛡 ' + (l.shields || 3) + ' shields</span><span class="chip">' + Math.min(l.boss ? qs.length : MISSION_SIZE, qs.length) + ' questions / run</span>' +
-      Object.keys(types).map(function (t) { return '<span class="chip ghost">' + TYPE_LABEL[t] + ' ×' + types[t] + '</span>'; }).join('') + '</div>' +
+      cardFlags(l) +
       (canPlay
         ? '<div class="mc-actions"><button class="btn primary big" id="btn-launch" data-autofocus>Launch mission <kbd>Enter</kbd></button>' +
           '<button class="btn ghost" id="btn-train" title="Practice 10 questions from this world without shields or stars">Training sim</button></div>'
@@ -558,6 +562,13 @@
       $('#btn-train').addEventListener('click', function () { startRun(l, 'drill'); });
     }
   }
+
+  // Level-card chips: only the boss clock (the boss world). Shields, run length and question types are left to the
+  // briefing and the HUD; the rules themselves are unchanged.
+  function cardFlags(l) {
+    return l && l.boss ? '<div class="mc-flags"><span class="chip danger">⏱ ' + Math.round((l.timeLimitSec || 900) / 60) + ' min boss clock</span></div>' : '';
+  }
+  G.cardFlags = cardFlags;
 
   function launchSelected() {
     var l = U.level(G.selected);
@@ -1398,6 +1409,14 @@
     applyAudio();
   }
 
+  // Esc in a mission and the on-screen Map button do the same thing: open the pause menu, whose "Abort to map"
+  // is the confirm step. Aborting goes through show('map'), which also cancels a power-down sequence in flight.
+  function missionEscape() {
+    if (G.screen !== 'mission' || !G.run || G.modalOpen || G.dialogOpen || G.journeyOpen) return;
+    pauseMenu();
+  }
+  G.missionEscape = missionEscape;
+
   function pauseMenu() {
     var run = G.run;
     modal('<h2 class="modal-title">Paused</h2><p class="modal-text">' + esc(run.level ? run.level.name : 'Repair Bay') + ' · question ' + (run.i + 1) + ' of ' + run.queue.length + (run.timeLimit ? '. The boss clock is frozen while paused.' : '') + '</p>' +
@@ -1449,7 +1468,7 @@
     }
     if (G.screen !== 'mission' || !G.run) { if (k === 'Escape' && G.screen !== 'map') show('map'); return; }
     var run = G.run;
-    if (k === 'Escape') { pauseMenu(); return; }
+    if (k === 'Escape') { missionEscape(); return; }
     if (typing) return;
     if (k === 'Enter') {
       if (e.target.closest && e.target.closest('.hud button, .mv button, a, summary')) return;
@@ -1515,6 +1534,7 @@
     $$('.settings-btn').forEach(function (b) { b.addEventListener('click', function () { sfx.click(); openSettings(); }); });
     $$('.mute-btn').forEach(function (b) { b.addEventListener('click', toggleMute); });
     $('#hud-pause').addEventListener('click', pauseMenu);
+    $('#hud-map').addEventListener('click', function () { sfx.click(); missionEscape(); });
     $('#modal').addEventListener('click', function (e) { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); });
     document.addEventListener('keydown', onKey);
     // Autoplay rules: audio may only start from a user gesture. The first pointer or key press starts it.

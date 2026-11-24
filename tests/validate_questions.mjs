@@ -323,6 +323,25 @@ for (const l of ONA.LEVELS.filter((l) => !l.bonus)) {
 const boss = ONA.LEVELS.find((l) => l.boss);
 if (boss && ONA.QUESTIONS.filter((q) => q.level === boss.id && q.type === 'multipart').length < 5) err('boss', 'boss level needs >= 5 multipart scenarios');
 
+// ---- Databricks mark: js/brand.js draws the exact path of the committed official asset (no redraws, no fetch)
+{
+  const svg = readFileSync(join(root, 'assets/databricks-mark.svg'), 'utf8');
+  const filePaths = [...svg.matchAll(/<path d="([^"]+)" fill="([^"]+)"/g)];
+  const bs = { window: {} }; bs.globalThis = bs; vm.createContext(bs);
+  vm.runInContext(readFileSync(join(root, 'js/brand.js'), 'utf8'), bs, { filename: 'js/brand.js' });
+  const B = bs.window.ONA.brand;
+  if (filePaths.length !== 1) err('brand', 'assets/databricks-mark.svg should hold exactly one path');
+  else {
+    if (filePaths[0][1] !== B.MARK_PATH) err('brand', 'js/brand.js MARK_PATH differs from assets/databricks-mark.svg');
+    if (filePaths[0][2].toUpperCase() !== '#FF3621' || B.LAVA.toUpperCase() !== '#FF3621') err('brand', 'the mark must stay Lava #FF3621');
+  }
+  if (!/viewBox="0 0 104\.5 113"/.test(svg)) err('brand', 'assets/databricks-mark.svg viewBox changed');
+  const iBrand = html.indexOf('src="js/brand.js"'), iShip = html.indexOf('src="js/ship.js"');
+  if (iBrand < 0 || iShip < 0 || iBrand > iShip) err('brand', 'index.html must load js/brand.js before js/ship.js');
+  const m = html.match(/id="title-count"[^>]*>(\d+) questions/);
+  if (!m || +m[1] !== ONA.QUESTIONS.length) err('title', `index.html title count (${m && m[1]}) must equal the bank size (${ONA.QUESTIONS.length}); game.js also sets it at runtime`);
+}
+
 console.log('Orbital Network Academy — question bank validation');
 console.log('Level  Name                    Questions  Gradable steps');
 for (const l of ONA.LEVELS) {
