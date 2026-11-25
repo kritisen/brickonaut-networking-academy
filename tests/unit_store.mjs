@@ -204,6 +204,46 @@ test('audio settings survive export/import and progress reset', () => {
   assert.equal(store.state.settings.music, false); assert.equal(store.state.settings.sfxVol, 0.6);
 });
 
+test('audio.needsTap: the "Tap for sound" chip only when music is wanted, the context is stuck and the page is visible', () => {
+  const { ONA } = boot();
+  const on = { music: true, muted: false };
+  assert.equal(ONA.audio.needsTap(on, 'suspended', false), true);
+  assert.equal(ONA.audio.needsTap(on, 'interrupted', false), true);          // iOS phone call / lock screen
+  assert.equal(ONA.audio.needsTap(on, 'running', false), false);
+  assert.equal(ONA.audio.needsTap(on, 'closed', false), false);
+  assert.equal(ONA.audio.needsTap(on, 'suspended', true), false);            // hidden tab suspends on purpose
+  assert.equal(ONA.audio.needsTap({ music: true, muted: true }, 'suspended', false), false);
+  assert.equal(ONA.audio.needsTap({ music: false, muted: false }, 'suspended', false), false);
+  assert.equal(ONA.audio.needsTap(on, null, false), false);                  // no context yet: nothing to unlock
+  // old-iOS fallback in use: a running context isn't enough if the session loop isn't playing
+  assert.equal(ONA.audio.needsTap(on, 'running', false, false), true);
+  assert.equal(ONA.audio.needsTap(on, 'running', false, true), false);
+  assert.equal(ONA.audio.needsTap(on, 'running', true, false), false);
+});
+
+test('audio.soundWanted: the session loop / unlock only matter when something can play', () => {
+  const { ONA } = boot();
+  const w = (o) => ONA.audio.soundWanted({ muted: false, music: true, sfx: true, ...o });
+  assert.equal(w({}), true);
+  assert.equal(w({ music: false }), true);                                   // SFX alone still need a session
+  assert.equal(w({ sfx: false }), true);
+  assert.equal(w({ music: false, sfx: false }), false);
+  assert.equal(w({ muted: true }), false);
+  assert.equal(ONA.audio.soundWanted(null), false);
+});
+
+test('audio.sessionMode: audioSession where it exists, a silent loop on older iOS, nothing elsewhere', () => {
+  const { ONA } = boot();
+  const m = (nav) => ONA.audio.sessionMode(nav);
+  assert.equal(m({ audioSession: { type: 'auto' }, userAgent: 'iPhone OS 17_0' }), 'audio-session');
+  assert.equal(m({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_7 like Mac OS X)' }), 'silent-loop');
+  assert.equal(m({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 5 }), 'silent-loop');   // iPadOS desktop UA
+  assert.equal(m({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 0 }), 'none');
+  assert.equal(m({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/131.0 Safari/537.36', maxTouchPoints: 5 }), 'none');   // touch-screen Mac / emulation
+  assert.equal(m({ userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120 Mobile' }), 'none');
+  assert.equal(m(null), 'none');
+});
+
 test('audio.levels: mute-all zeroes master; music/SFX switches zero their bus; volumes scale', () => {
   const { ONA } = boot();
   const base = { muted: false, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8 };

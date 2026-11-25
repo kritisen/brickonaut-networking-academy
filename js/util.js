@@ -48,6 +48,17 @@
   };
   U.uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
+  // Backing-store scale for the full-screen canvases: device pixels, capped at 2x and at ~8 MP (one 4K frame) in total
+  // (phones stay sharp at 2x; a 5K screen at 2x drops to ~1.3x instead of allocating 29 MP per frame).
+  U.canvasDpr = function (w, h) {
+    var d = Math.min(window.devicePixelRatio || 1, 2), budget = 8.3e6;
+    if (w * h * d * d > budget) d = Math.max(1, Math.sqrt(budget / (w * h)));
+    return d;
+  };
+
+  // Touch-first device (phone / tablet without a mouse): swap keyboard hints for tap wording.
+  U.touch = function () { return !!(window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches); };
+
   U.reducedMotion = function () {
     var pref = ONA.store && ONA.store.state ? ONA.store.state.settings.motion : 'auto';
     if (pref === 'reduce') return true;

@@ -6,7 +6,7 @@
   var MISSION_SIZE = 12;
   var REPAIR_SIZE = 15;
   var DRILL_SIZE = 10;
-  var ORDER_ROW = 62;
+  var ORDER_ROW = 62;   // row pitch; refreshed from the list's --order-row (CSS) each time a sequence renders
 
   var G = (ONA.game = { screen: null, run: null, selected: 1, dialogOpen: false, modalOpen: false });
 
@@ -55,18 +55,60 @@
   // so a first gesture that doesn't start music (e.g. M muting everything) still gets the toast later.
   // Returns true when this call started music for the first time; { quiet: true } lets the caller show the
   // toast itself instead of its usual one (M / N), so there's never a duplicate.
-  var musicToastShown = false, MUSIC_ON_TOAST = 'Music on · N toggles music, M mutes all';
+  // Never claim music is on before it actually plays (phones can refuse to start audio): "Music on" is shown,
+  // and only then marked shown, once the context runs (and the old-iOS session loop plays, if it's needed).
+  // Every pending toast check carries a sequence number: mute / music off bump it, so stale checks stay silent.
+  var musicToastShown = false, musicToastPending = false, soundSeq = 0, MUSIC_ON_TOAST = 'Music on · N toggles music, M mutes all';
+  function musicOn() { var s = store.state.settings; return !!(s.music && !s.muted); }
+  function soundWanted() { return ONA.audio.soundWanted(store.state.settings); }
+  function soundLive() { return ONA.audio.running() && ONA.audio.loopOk(); }
+  function cancelSoundToasts() { soundSeq++; musicToastPending = false; }
+  function showMusicOn() {
+    if (musicToastShown || !musicOn()) return;
+    musicToastShown = true; musicToastPending = false;
+    toast(MUSIC_ON_TOAST);
+  }
+  G._soundToasts = function () { return { shown: musicToastShown, pending: musicToastPending, seq: soundSeq }; };   // tests
   function startAudio(opts) {
+    if (!soundWanted()) { ONA.audio.syncSession(false); ONA.music.sync(); syncSoundChip(); return false; }   // nothing to start
     sfx.unlock();
     ONA.audio.apply();
-    var first = ONA.music.sync() && !musicToastShown;
+    var started = ONA.music.sync();
+    var first = (started || musicToastPending) && !musicToastShown && musicOn();
     if (first) {
-      musicToastShown = true;
-      if (!(opts && opts.quiet)) toast(MUSIC_ON_TOAST);
+      musicToastPending = true;
+      if (!(opts && opts.quiet)) whenSoundRuns(musicOn, showMusicOn);
     }
+    syncSoundChip();
     return first;
   }
   G.startAudio = startAudio;
+
+  // Run `ok` once sound is live (now, or within ~0.6 s while a resume settles), else `blocked`; never if the
+  // settings no longer match (`cond`) or a mute / music change happened since (sequence number moved on).
+  function whenSoundRuns(cond, ok, blocked) {
+    var A = ONA.audio, t0 = Date.now(), seq = soundSeq;
+    (function check() {
+      if (seq !== soundSeq || !cond()) return;
+      if (soundLive()) return ok();
+      if (Date.now() - t0 > 600 || !A.ctx) { if (blocked) blocked(); return; }
+      setTimeout(check, 40);
+    })();
+  }
+
+  // "Tap for sound": music is on, but ~1 s after a gesture the context still isn't running (or the old-iOS
+  // session loop isn't playing). Also where a pending "Music on" gets shown, once sound really starts.
+  var chipTimer = 0;
+  function needsTap() { var A = ONA.audio; return !!A.ctx && A.needsTap(store.state.settings, A.ctx.state, A.hidden || document.hidden, A.loopOk()); }
+  function syncSoundChip() {
+    if (musicToastPending && soundLive()) showMusicOn();
+    var chip = $('#sound-chip'); if (!chip) return;
+    if (!needsTap()) { clearTimeout(chipTimer); chipTimer = 0; chip.hidden = true; return; }
+    if (!chip.hidden || chipTimer) return;
+    chipTimer = setTimeout(function () { chipTimer = 0; if (needsTap()) chip.hidden = false; }, 1000);
+  }
+  G.syncSoundChip = syncSoundChip;
+  ONA.audio.onchange = syncSoundChip;
 
   function applyAudio() {
     ONA.audio.apply();
@@ -185,6 +227,7 @@
   }
 
   function syncMute() {
+    syncSoundChip();
     var m = store.state.settings.muted;
     $$('.mute-btn').forEach(function (b) {
       b.setAttribute('aria-pressed', m ? 'true' : 'false');
@@ -424,12 +467,22 @@
     placeShip(mapShipPos, 0, false);
     if (!U.level(G.selected)) G.selected = at.id;
     renderMissionCard();
+    panMap(G.selected, false);
 
     $$('#galaxy .planet').forEach(function (p) {
       p.addEventListener('click', function () { selectLevel(+p.dataset.level, true); });
       p.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); if (G.selected === +p.dataset.level) launchSelected(); else selectLevel(+p.dataset.level, true); } });
     });
   }
+
+  // On phones the map is wider than the screen (#map-stage scrolls sideways): centre the given world.
+  function panMap(id, smooth) {
+    var stage = $('#map-stage'), svg = $('#galaxy'), l = U.level(id);
+    if (!stage || !svg || !l || stage.scrollWidth <= stage.clientWidth + 1) return;
+    var x = l.map.x / 1600 * svg.getBoundingClientRect().width - stage.clientWidth / 2;
+    stage.scrollTo({ left: Math.max(0, x), behavior: smooth && !U.reducedMotion() ? 'smooth' : 'auto' });
+  }
+  window.addEventListener('resize', function () { if (G.screen === 'map') panMap(G.selected, false); });
 
   function placeShip(p, angle, flying) {
     var s = $('#map-ship'); if (!s) return;
@@ -465,6 +518,7 @@
     sfx.select();
     $$('#galaxy .planet').forEach(function (p) { p.classList.toggle('selected', +p.dataset.level === id); });
     renderMissionCard();
+    panMap(id, true);
     if (fly && store.unlocked(l) && playable(l)) {
       store.state.shipAt = id; store.save();
       flyShip(shipAnchor(l));
@@ -653,7 +707,7 @@
 
   var RENDER = {
     mc: function (p, body) {
-      $('#q-hint').innerHTML = 'Press <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> then <kbd>Enter</kbd>';
+      $('#q-hint').innerHTML = U.touch() ? 'Tap an answer, then Lock in' : 'Press <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> then <kbd>Enter</kbd>';
       var list = el('div', { class: 'choices', role: 'radiogroup', 'aria-labelledby': 'q-prompt' });
       p.choices.forEach(function (c, k) {
         var b = el('button', { class: 'choice', role: 'radio', 'aria-checked': 'false', 'data-k': k, html: '<span class="key">' + (k + 1) + '</span><span class="txt">' + fmt(c) + '</span>' });
@@ -664,7 +718,7 @@
       body.appendChild(list);
     },
     multi: function (p, body) {
-      $('#q-hint').innerHTML = 'Select all that apply · <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> toggle';
+      $('#q-hint').innerHTML = 'Select all that apply' + (U.touch() ? '' : ' · <kbd>1</kbd>–<kbd>' + p.choices.length + '</kbd> toggle');
       G.run.sel = [];
       var list = el('div', { class: 'choices multi', role: 'group', 'aria-labelledby': 'q-prompt' });
       p.choices.forEach(function (c, k) {
@@ -675,7 +729,7 @@
       body.appendChild(list);
     },
     numeric: function (p, body) {
-      $('#q-hint').innerHTML = 'Type a number · <kbd>Enter</kbd> to lock in';
+      $('#q-hint').innerHTML = U.touch() ? 'Type a number, then Lock in' : 'Type a number · <kbd>Enter</kbd> to lock in';
       var wrap = el('div', { class: 'numeric' });
       var row = el('label', { class: 'num-row' });
       var inp = el('input', { id: 'num-input', type: 'text', inputmode: 'numeric', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Answer' + (p.unit ? ' in ' + p.unit : ''), placeholder: '—' });
@@ -684,6 +738,7 @@
       row.appendChild(el('span', { class: 'num-unit', text: p.unit && p.unit !== 'prefix' ? p.unit : p.unit === 'prefix' ? 'prefix length' : '' }));
       wrap.appendChild(row);
       inp.addEventListener('input', function () { inp.value = inp.value.replace(/[^\d.,\/]/g, ''); setReady(parseNum(inp.value) != null); });
+      inp.addEventListener('focus', function () { keepAboveKeyboard(inp); });
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (!G.run.answered && parseNum(inp.value) != null) submit(); else if (G.run.answered) next(); } });
       var q = curQ();
       if (q.topic === 'cidr' || p.calc || /dbx-(aws|azure|scenario)/.test(q.topic)) {
@@ -697,11 +752,13 @@
       setTimeout(function () { inp.focus({ preventScroll: true }); }, 50);
     },
     order: function (p, body) {
-      $('#q-hint').innerHTML = 'Drag to reorder · or <kbd>1</kbd>–<kbd>' + p.items.length + '</kbd> pick, <kbd>↑</kbd><kbd>↓</kbd> move';
+      $('#q-hint').innerHTML = U.touch() ? 'Drag a step, or use ▲ ▼' : 'Drag to reorder · or <kbd>1</kbd>–<kbd>' + p.items.length + '</kbd> pick, <kbd>↑</kbd><kbd>↓</kbd> move';
       var order;
       do { order = U.shuffle(p.items.map(function (_, k) { return k; })); } while (order.every(function (v, k) { return v === k; }) && p.items.length > 1);
       G.run.sel = order; G.run.orderPick = null;
       var list = el('ol', { class: 'order-list', 'aria-labelledby': 'q-prompt' });
+      body.appendChild(list);
+      ORDER_ROW = parseFloat(getComputedStyle(list).getPropertyValue('--order-row')) || 62;
       list.style.height = p.items.length * ORDER_ROW + 'px';
       p.items.forEach(function (txt, k) {
         var li = el('li', { class: 'order-item', 'data-k': k, tabindex: '0', html:
@@ -713,12 +770,11 @@
         li.addEventListener('focus', function () { G.run.orderPick = k; layoutOrder(); });
         attachDrag(li, k, list);
       });
-      body.appendChild(list);
       layoutOrder();
       setReady(true);
     },
     diagram: function (p, body) {
-      $('#q-hint').innerHTML = 'Click a component · or <kbd>1</kbd>–<kbd>' + p.diagram.nodes.length + '</kbd>';
+      $('#q-hint').innerHTML = U.touch() ? 'Tap a component' : 'Click a component · or <kbd>1</kbd>–<kbd>' + p.diagram.nodes.length + '</kbd>';
       var wrap = el('div', { class: 'diagram-wrap', html: ONA.diagram.render(p.diagram, { interactive: true, numbered: true, idPrefix: 'q' }) });
       body.appendChild(wrap);
       $$('.node[data-node]', wrap).forEach(function (n) {
@@ -755,6 +811,12 @@
       li.classList.toggle('picked', G.run.orderPick === k);
     });
   }
+  window.addEventListener('resize', function () {
+    var list = $('#q-body .order-list'); if (!list || !G.run || !Array.isArray(G.run.sel)) return;
+    var row = parseFloat(getComputedStyle(list).getPropertyValue('--order-row')) || 62;
+    if (row === ORDER_ROW) return;
+    ORDER_ROW = row; list.style.height = list.children.length * ORDER_ROW + 'px'; layoutOrder();
+  });
   function moveOrder(k, dir) {
     if (G.run.answered) return;
     var o = G.run.sel, pos = o.indexOf(k), np = pos + dir;
@@ -788,6 +850,26 @@
     }
     li.addEventListener('pointerup', end);
     li.addEventListener('pointercancel', end);
+  }
+
+  // Phones: the on-screen keyboard covers the lower ~half of the screen. Scroll the play area so a focused
+  // field sits in the part that stays visible (visualViewport when the browser reports it, else the top half).
+  function keepAboveKeyboard(inp) {
+    if (!U.touch()) return;
+    var scroller = inp.closest('.play'); if (!scroller) return;
+    function fit() {
+      if (document.activeElement !== inp) return;
+      var vv = window.visualViewport, visible = vv ? Math.min(vv.height, window.innerHeight) : window.innerHeight;
+      var limit = Math.min(visible - 16, window.innerHeight * 0.5), r = inp.getBoundingClientRect();
+      if (r.bottom > limit) scroller.scrollTop += r.bottom - limit;
+      else if (r.top < 70) scroller.scrollTop -= 70 - r.top;
+    }
+    setTimeout(fit, 60); setTimeout(fit, 400);
+    if (window.visualViewport && !inp._vv) {
+      inp._vv = true;
+      window.visualViewport.addEventListener('resize', fit);
+      inp.addEventListener('blur', function off() { window.visualViewport.removeEventListener('resize', fit); inp._vv = false; inp.removeEventListener('blur', off); });
+    }
   }
 
   function parseNum(v) {
@@ -1259,21 +1341,22 @@
     var s = store.state.settings;
     modal('<h2 class="modal-title">Ship settings</h2>' +
       toggleRow('set-free', 'Free roam', 'Unlock every world, whatever your star ratings.', s.freeRoam) +
-      toggleRow('set-sound', 'All sound', 'Master switch for music and effects (<kbd>M</kbd>). Everything is synthesized in the browser.', !s.muted) +
-      audioRow('music', 'Music', 'Ambient soundtrack that shifts with each area (<kbd>N</kbd>).') +
+      toggleRow('set-sound', 'All sound', 'Master switch for music and effects<span class="kbd-only"> (<kbd>M</kbd>)</span>. Everything is synthesized in the browser.', !s.muted) +
+      audioRow('music', 'Music', 'Ambient soundtrack that shifts with each area<span class="kbd-only"> (<kbd>N</kbd>)</span>.') +
       audioRow('sfx', 'Sound effects', 'Answer, warp and UI sounds.') +
       '<div class="set-row"><div><b>Motion</b><span>Auto follows your OS "reduce motion" setting.</span></div><div class="seg" role="radiogroup" aria-label="Motion">' +
       ['auto', 'reduce', 'full'].map(function (m) { return '<button role="radio" aria-checked="' + (s.motion === m) + '" data-motion="' + m + '" class="' + (s.motion === m ? 'on' : '') + '">' + { auto: 'Auto', reduce: 'Reduced', full: 'Full' }[m] + '</button>'; }).join('') + '</div></div>' +
-      '<h3 class="modal-sub">Keyboard</h3><ul class="keys"><li><kbd>1</kbd>–<kbd>9</kbd> pick an answer or diagram node</li><li><kbd>Enter</kbd> lock in / continue / launch</li><li><kbd>↑</kbd><kbd>↓</kbd> move the picked step in sequence questions</li><li><kbd>←</kbd><kbd>→</kbd> cycle worlds on the galaxy map</li><li><kbd>M</kbd> mute all · <kbd>N</kbd> music on/off · <kbd>Esc</kbd> pause / close</li></ul>' +
+      '<h3 class="modal-sub kbd-only">Keyboard</h3><ul class="keys kbd-only"><li><kbd>1</kbd>–<kbd>9</kbd> pick an answer or diagram node</li><li><kbd>Enter</kbd> lock in / continue / launch</li><li><kbd>↑</kbd><kbd>↓</kbd> move the picked step in sequence questions</li><li><kbd>←</kbd><kbd>→</kbd> cycle worlds on the galaxy map</li><li><kbd>M</kbd> mute all · <kbd>N</kbd> music on/off · <kbd>Esc</kbd> pause / close</li></ul>' +
       '<div class="modal-actions"><button class="btn primary" data-close data-autofocus>Done</button></div>');
     var b = $('#modal-body');
     $('#set-free').addEventListener('change', function (e) { store.setting('freeRoam', e.target.checked); if (G.screen === 'map') renderMap(); });
-    $('#set-sound').addEventListener('change', function (e) { store.setting('muted', !e.target.checked); startAudio(); applyAudio(); syncAudioControls(); if (e.target.checked) sfx.click(); });
+    // switching sound on starts audio inside this gesture; switching it off only stops things (never startAudio)
+    $('#set-sound').addEventListener('change', function (e) { store.setting('muted', !e.target.checked); if (!e.target.checked) cancelSoundToasts(); startAudio(); applyAudio(); syncAudioControls(); if (e.target.checked) sfx.click(); });
     ['music', 'sfx'].forEach(function (k) {
-      $('#set-' + k).addEventListener('change', function (e) { store.setting(k, e.target.checked); startAudio(); applyAudio(); syncAudioControls(); if (k === 'sfx' && e.target.checked) sfx.click(); });
+      $('#set-' + k).addEventListener('change', function (e) { store.setting(k, e.target.checked); if (k === 'music' && !e.target.checked) cancelSoundToasts(); startAudio(); applyAudio(); syncAudioControls(); if (k === 'sfx' && e.target.checked) sfx.click(); });
       var range = $('#set-' + k + '-vol');
       // live while dragging (no save per pixel), saved once on release
-      range.addEventListener('input', function () { store.setting(k + 'Vol', range.value / 100, { noSave: true }); startAudio(); ONA.audio.apply(); syncAudioControls(); });
+      range.addEventListener('input', function () { store.setting(k + 'Vol', range.value / 100, { noSave: true }); if (soundWanted()) startAudio(); ONA.audio.apply(); syncAudioControls(); });
       range.addEventListener('change', function () { store.setting(k + 'Vol', range.value / 100); if (k === 'sfx') sfx.select(); });
     });
     syncAudioControls();
@@ -1390,10 +1473,14 @@
   // M / mute button: mute-all (music + SFX). The music and SFX settings underneath are kept.
   function toggleMute() {
     var muted = store.setting('muted', !store.state.settings.muted);
-    var firstMusic = startAudio({ quiet: true });
+    cancelSoundToasts();
+    if (muted) { ONA.audio.syncSession(false); applyAudio(); syncAudioControls(); toast('All sound off · M to turn back on'); return; }
+    if (!soundWanted()) { applyAudio(); syncAudioControls(); toast('Sound on · music and effects are off in Settings'); return; }
+    var firstMusic = startAudio({ quiet: true });   // also (re)starts the old-iOS session loop inside this gesture
     applyAudio(); syncAudioControls();
-    if (!muted) sfx.click();
-    toast(muted ? 'All sound off · M to turn back on' : firstMusic ? MUSIC_ON_TOAST : 'Sound on');
+    sfx.click();
+    whenSoundRuns(function () { return !store.state.settings.muted; },
+      function () { if (firstMusic) showMusicOn(); else toast('Sound on'); }, function () { toast(SOUND_BLOCKED); });
   }
 
   // N: music only. If everything is muted, turning music on also lifts the mute-all.
@@ -1401,11 +1488,14 @@
     var s = store.state.settings, on = !(s.music && !s.muted);
     store.setting('music', on);
     if (on && s.muted) store.setting('muted', false);
+    cancelSoundToasts();
+    if (!on) { startAudio(); applyAudio(); syncAudioControls(); toast('Music off · N to turn back on'); return; }   // startAudio only stops here if nothing is wanted
     var firstMusic = startAudio({ quiet: true });
     applyAudio(); syncAudioControls();
-    toast(on ? (firstMusic ? MUSIC_ON_TOAST : 'Music on') : 'Music off · N to turn back on');
+    whenSoundRuns(musicOn, function () { if (firstMusic) showMusicOn(); else toast('Music on'); }, function () { toast(SOUND_BLOCKED); });
   }
   G.toggleMusic = toggleMusic;
+  var SOUND_BLOCKED = 'Sound didn\'t start · tap "Tap for sound"';
 
   function begin() {
     startAudio(); sfx.click();
@@ -1439,6 +1529,8 @@
     }
     document.addEventListener('pointerdown', firstGesture, true);
     document.addEventListener('keydown', firstGesture, true);
+    // later gestures (touchend / click / pointerup / keydown) keep unlocking until the context runs: js/audio.js
+    $('#sound-chip').addEventListener('click', function () { startAudio(); sfx.click(); syncSoundChip(); });
     var start = (location.hash || '').replace('#', '');
     show(['map', 'log', 'bay'].indexOf(start) >= 0 ? start : 'title');
   };

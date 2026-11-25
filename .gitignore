@@ -8,4 +8,5 @@ screenshots/*
 !screenshots/39-concept-network-policy.jpg
 !screenshots/42-journey-dns-step3.jpg
 !screenshots/44-journeys-library.jpg
+!screenshots/mobile/
 .DS_Store
