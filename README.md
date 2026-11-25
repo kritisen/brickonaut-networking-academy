@@ -1,8 +1,8 @@
-# Orbital Network Academy
+# Brickonaut Networking Academy
 
 A space-themed trainer for general networking fundamentals, built to learn cloud and Databricks networking. You play a cadet linking humanity's lakehouse fleet across the solar system while a rogue AI, **NULL ROUTE**, cuts the links. You learn by flying missions, the Repair Bay drills what you missed, and the Captain's Log tracks how you improve.
 
-**Play online:** https://kritisen.github.io/orbital-network-academy/
+**Play online:** https://kritisen.github.io/brickonaut-networking-academy/
 
 ![Title screen](screenshots/01-title.jpg)
 
