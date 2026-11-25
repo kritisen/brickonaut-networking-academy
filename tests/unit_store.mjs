@@ -18,8 +18,9 @@ function boot(savedJSON, mem = new Map()) {
     localStorage: { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) }
   };
   sandbox.window = sandbox; sandbox.globalThis = sandbox;
+  sandbox.addEventListener = () => {};                    // js/game.js wires window listeners at load (never fired here)
   vm.createContext(sandbox);
-  for (const f of ['data/questions.js', 'js/util.js', 'js/store.js', 'js/ship.js', 'js/audio.js', 'js/music.js']) {
+  for (const f of ['data/questions.js', 'data/journeys.js', 'js/util.js', 'js/store.js', 'js/brand.js', 'js/ship.js', 'js/audio.js', 'js/music.js', 'js/journeys.js', 'js/game.js']) {
     vm.runInContext(readFileSync(join(root, f), 'utf8'), sandbox, { filename: f });
   }
   const ONA = sandbox.ONA;
@@ -160,7 +161,7 @@ const plain = (o) => JSON.parse(JSON.stringify(o));   // copy out of the vm real
 
 test('settings migration: old save with muted:true keeps mute-all, turns music + SFX on at default volume', () => {
   const { store } = boot(OLD_SETTINGS_SAVE({ freeRoam: true, muted: true, motion: 'reduce' }));
-  assert.deepEqual(plain(store.state.settings), { freeRoam: true, muted: true, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8, motion: 'reduce' });
+  assert.deepEqual(plain(store.state.settings), { freeRoam: true, freeRoamSet: false, muted: true, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8, motion: 'reduce', journeySpeed: 1 });
 });
 
 test('settings migration: old save with muted:false plays music and SFX', () => {
@@ -173,7 +174,7 @@ test('settings migration: old save with muted:false plays music and SFX', () => 
 
 test('settings migration: corrupt or missing values are coerced, unknown keys dropped', () => {
   const { store } = boot(OLD_SETTINGS_SAVE({ muted: 'yes', music: 1, sfx: false, musicVol: 'loud', sfxVol: 7, motion: 'warp', evil: '<script>' }));
-  assert.deepEqual(plain(store.state.settings), { freeRoam: false, muted: false, music: true, sfx: false, musicVol: 0.5, sfxVol: 1, motion: 'auto' });
+  assert.deepEqual(plain(store.state.settings), { freeRoam: true, freeRoamSet: false, muted: false, music: true, sfx: false, musicVol: 0.5, sfxVol: 1, motion: 'auto', journeySpeed: 1 });
   const { store: s2 } = boot(OLD_SETTINGS_SAVE(null));
   assert.deepEqual(plain(s2.state.settings), plain(s2.DEFAULT_SETTINGS));
   const { store: s3 } = boot(OLD_SETTINGS_SAVE([1, 2]));
@@ -470,6 +471,96 @@ test('journeys survive export/import; reset clears them', () => {
   store.importJSON(dump);
   assert.equal(store.state.journeys.privatelink.done, 1);
   assert.equal(store.state.journeys.privatelink.firstTry, true);
+});
+
+// ---------------------------------------------------------------- free roam default, journey autoplay + speed, level cards
+test('free roam: on by default for a new player; every main world is unlocked', () => {
+  const { ONA, store } = boot();
+  assert.equal(store.state.settings.freeRoam, true);
+  assert.equal(store.state.settings.freeRoamSet, false);
+  for (const l of ONA.LEVELS) assert.equal(store.unlocked(l), true, 'world ' + l.id + ' unlocked');
+});
+
+test('free roam: an explicit choice (on or off) is kept across reloads and export/import', () => {
+  const mem = new Map();
+  const { ONA, store } = boot(undefined, mem);
+  store.setting('freeRoam', false);
+  assert.equal(store.state.settings.freeRoamSet, true);
+  assert.equal(store.unlocked(ONA.util.level(2)), false, 'gating back on');
+  const again = boot(undefined, mem).store;
+  assert.equal(again.state.settings.freeRoam, false, 'explicit off survives a reload');
+  const dump = again.exportJSON();
+  again.setting('freeRoam', true);
+  again.importJSON(dump);
+  assert.equal(again.state.settings.freeRoam, false, 'explicit off survives export/import');
+  again.setting('freeRoam', true);
+  assert.equal(boot(undefined, mem).store.state.settings.freeRoam, true, 'explicit on survives a reload');
+});
+
+test('free roam migration: older saves (always stored freeRoam:false, no choice flag) move to the new default, on', () => {
+  for (const fr of [false, true]) {
+    const { store } = boot(OLD_SETTINGS_SAVE({ freeRoam: fr, muted: false, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8, motion: 'auto' }));
+    assert.equal(store.state.settings.freeRoam, true, 'old freeRoam:' + fr + ' → on');
+  }
+  const { store } = boot(OLD_SETTINGS_SAVE({ freeRoam: false, freeRoamSet: true }));
+  assert.equal(store.state.settings.freeRoam, false, 'flagged off stays off');
+  const { store: s2 } = boot(OLD_SETTINGS_SAVE({ freeRoam: 'no', freeRoamSet: true }));
+  assert.equal(s2.state.settings.freeRoam, true, 'corrupt value → default');
+  assert.equal(s2.state.settings.freeRoamSet, false);
+});
+
+test('journeys: autoplay is on by default when a journey opens, off under reduced motion', () => {
+  const { ONA, store } = boot();
+  assert.equal(ONA.journeys.autoplayDefault(), true, 'motion auto (no OS preference) → autoplay on');
+  store.setting('motion', 'reduce');
+  assert.equal(ONA.journeys.autoplayDefault(), false, 'reduced motion → starts paused');
+  store.setting('motion', 'full');
+  assert.equal(ONA.journeys.autoplayDefault(), true);
+});
+
+test('journeys: autoplay speed defaults to 1×, only 1 / 1.5 / 2 are kept, and it persists across reloads', () => {
+  const mem = new Map();
+  const { ONA, store } = boot(undefined, mem);
+  assert.equal(store.state.settings.journeySpeed, 1);
+  assert.equal(ONA.journeys.speed(), 1);
+  assert.deepEqual([...ONA.journeys.SPEEDS], [1, 1.5, 2]);
+  assert.equal(store.setting('journeySpeed', 3), 1, 'unknown speed → 1×');
+  store.setting('journeySpeed', 1.5);
+  assert.equal(boot(undefined, mem).store.state.settings.journeySpeed, 1.5, 'persisted');
+  const { ONA: O2, store: s2 } = boot(undefined, mem);
+  O2.journeys.cycleSpeed(); assert.equal(s2.state.settings.journeySpeed, 2);
+  O2.journeys.cycleSpeed(); assert.equal(s2.state.settings.journeySpeed, 1, 'cycles back to 1×');
+  assert.equal(boot(OLD_SETTINGS_SAVE({ journeySpeed: '2' })).store.state.settings.journeySpeed, 1, 'corrupt → 1×');
+});
+
+test('journeys: the 1× dwell is about half the old pace, scales with step length, and divides by the speed', () => {
+  const { ONA } = boot();
+  const J = ONA.journeys, oldDwell = (s) => Math.max(4200, s.say.length * 42);
+  const steps = ONA.JOURNEYS.flatMap((j) => j.steps);
+  const sum = (f) => steps.reduce((a, s) => a + f(s), 0);
+  const ratio = sum((s) => J.dwellMs(s, 1)) / sum(oldDwell);
+  assert.ok(ratio > 0.4 && ratio < 0.6, 'mean dwell ratio new/old ≈ 0.5, got ' + ratio.toFixed(2));
+  assert.ok(J.dwellMs({ say: 'x'.repeat(240) }, 1) > J.dwellMs({ say: 'x'.repeat(100) }, 1), 'longer narration stays up longer');
+  assert.equal(J.dwellMs({ say: 'short' }, 1), 2000, '2 s floor');
+  assert.equal(J.dwellMs({ say: 'short' }, 2), 1000);
+  const j = J.get('dns'), k = j.steps.findIndex((st) => st.from && st.to && !st.back && !st.figure);
+  const at1 = J.scene(j, k, { speed: 1, static: true }), at2 = J.scene(j, k, { speed: 2, static: true });
+  assert.match(at1, /animation-duration:0\.75s/); assert.match(at2, /animation-duration:0\.375s/);
+});
+
+test('level cards: no shields / run-length / question-type chips; only the boss card shows the boss clock', () => {
+  const { ONA } = boot();
+  for (const l of ONA.LEVELS) {
+    const h = ONA.game.cardFlags(l);
+    assert.doesNotMatch(h, /shields|questions \/ run|×\d/, 'world ' + l.id + ' card has a removed chip');
+    for (const t of ['Choice', 'Multi-select', 'Calc', 'Sequence', 'Diagram', 'Scenario']) assert.ok(!h.includes(t), 'world ' + l.id + ' shows ' + t);
+    if (l.boss) assert.match(h, /⏱ 15 min boss clock/); else assert.equal(h, '', 'world ' + l.id + ' has no chips');
+  }
+});
+
+test('Databricks worlds are derived from the question bank: 4, 5 and the boss', () => {
+  const { ONA } = boot();
+  assert.deepEqual([...ONA.LEVELS.filter((l) => ONA.util.isDbxWorld(l)).map((l) => l.id)], [4, 5, 6]);
 });
 
 // ---------------------------------------------------------------- integration: migrations compose

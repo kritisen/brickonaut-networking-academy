@@ -79,6 +79,13 @@
 
   U.topicLabel = function (t) { return (ONA.TOPICS[t] && ONA.TOPICS[t].label) || t; };
   U.level = function (id) { return ONA.LEVELS.filter(function (l) { return l.id === id; })[0]; };
+  // A Databricks world: at least half its questions are in Databricks topics (ONA.TOPICS[t].dbx). Drives the
+  // Databricks mark on the galaxy map, so a new level gets it (or not) from its question bank alone.
+  U.isDbxWorld = function (level) {
+    var id = level && typeof level === 'object' ? level.id : level, n = 0, d = 0;
+    (ONA.QUESTIONS || []).forEach(function (q) { if (q.level !== id) return; n++; if (ONA.TOPICS[q.topic] && ONA.TOPICS[q.topic].dbx) d++; });
+    return n > 0 && d * 2 >= n;
+  };
   U.qById = function (id) {
     if (!U._qmap) { U._qmap = {}; ONA.QUESTIONS.forEach(function (q) { U._qmap[q.id] = q; }); }
     return U._qmap[id];

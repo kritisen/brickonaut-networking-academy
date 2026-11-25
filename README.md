@@ -30,7 +30,7 @@ The game also plays on phones, in portrait and landscape. Everything is tap-size
 | **Missions** | Each world has a commander briefing, 12 questions ordered easy to hard (the boss uses all 15 scenarios), a mid-mission twist that turns on **Overdrive** (×1.5 XP), and an outro. |
 | **Shields / hull** | They act as lives: 3 per mission, 5 for the boss. A wrong answer or wrong scenario step costs a hull point, and every streak of 5 restores one. The ship's shield bubble fades as you lose points. At 0 the ship powers down and is towed to the Repair Bay. |
 | **XP and streaks** | Base XP depends on difficulty. A streak multiplies it ×1.5 after 3 in a row, ×2 after 6, and ×3 after 10. Answers under 20 s earn a speed bonus. Rank goes from Cadet up to Fleet Admiral. |
-| **Stars** | 3★ needs ≥90% accuracy, 2★ ≥75%, 1★ ≥50%. **2★ unlocks the next world.** Turn on *Settings → Free roam* to skip the gating. |
+| **Stars** | 3★ needs ≥90% accuracy, 2★ ≥75%, 1★ ≥50%. **2★ unlocks the next world** when gating is on. *Settings → Free roam* is on by default, so every world is open; turn it off to play them in order. |
 | **Boss: Deep Space** | Multi-step architecture and troubleshooting scenarios on a 15-minute clock. The clock pauses while the game is paused. |
 | **Training sim** | Ten random questions from one world, with no shields or stars and half XP. |
 | **Repair Bay** | The hangar where your ship is docked. Every damaged module is labelled on the ship. Underneath, it's Leitner spaced repetition. Any miss goes to bay 1. A correct answer moves a part up a bay **only once its review is due** (review intervals: now, 4 h, 1 d, 3 d, 7 d), and clearing bay 5 marks it repaired. Another miss sends it back to bay 1. *Start repair run* serves the due parts. *Drill all damaged* is practice: early hits don't skip bays. |
@@ -47,7 +47,7 @@ The game also plays on phones, in portrait and landscape. Everything is tap-size
 | ![CIDR](screenshots/36-concept-cidr.jpg) | ![Private Link](screenshots/37-concept-private-link.jpg) |
 | ![Network policy](screenshots/39-concept-network-policy.jpg) | |
 
-**Journeys (holo-sim).** A journey is an animated, clickable walkthrough of how a flow actually works, played in a full holo-sim overlay. Your ship is the client, servers are stations and satellites, the internet is a nebula, and a VPC/VNet or Databricks account is a station ring. Each step sends a glowing packet between the components involved, with Commander Vega narrating and an **Inside the packet** callout (fields like source/destination, flags, TTL, the route that matched). Tap or click any component, or Tab to it and press <kbd>Enter</kbd>, to scan it and get a tooltip. Controls are Back/Next, progress dots (jump to any step), **Autoplay**, **Replay** and <kbd>Esc</kbd>. On the keyboard: <kbd>←</kbd>/<kbd>→</kbd> step, <kbd>Space</kbd> or <kbd>P</kbd> autoplay, <kbd>R</kbd> replay, <kbd>1</kbd>–<kbd>4</kbd> answer. Each journey ends with one **check yourself** question. Answering it correctly earns a holo-sim badge, plus **+40 XP the first time** (replays are logged but earn no XP). While a journey is open, the boss clock is frozen.
+**Journeys (holo-sim).** A journey is an animated, clickable walkthrough of how a flow actually works, played in a full holo-sim overlay. Your ship is the client, servers are stations and satellites, the internet is a nebula, and a VPC/VNet or Databricks account is a station ring. Each step sends a glowing packet between the components involved, with Commander Vega narrating and an **Inside the packet** callout (fields like source/destination, flags, TTL, the route that matched). Tap or click any component, or Tab to it and press <kbd>Enter</kbd>, to scan it and get a tooltip. Controls are Back/Next, progress dots (jump to any step), **Autoplay**, a speed button (**1×**, **1.5×**, **2×**, saved in your settings), **Replay** and <kbd>Esc</kbd>. Autoplay starts as soon as a journey opens; pause it any time. With reduced motion on, it starts paused. On the keyboard: <kbd>←</kbd>/<kbd>→</kbd> step, <kbd>Space</kbd> or <kbd>P</kbd> autoplay, <kbd>R</kbd> replay, <kbd>1</kbd>–<kbd>4</kbd> answer. Each journey ends with one **check yourself** question. Answering it correctly earns a holo-sim badge, plus **+40 XP the first time** (replays are logged but earn no XP). While a journey is open, the boss clock is frozen.
 
 | Journey | World | Questions mapped |
 |---|---|---|
@@ -75,9 +75,9 @@ All journeys are open from the start, whatever worlds you've unlocked. They're s
 
 Figures are `aria-hidden` (decorative); the concept text is plain text that screen readers read. With reduced motion on, figures are static: no travelling probes or flowing packets, and everything is revealed at once. The Continue button sticks to the bottom of the feedback panel, so a tall figure scrolls inside the panel instead of pushing Continue off-screen (desktop, iPad landscape and portrait).
 
-**Keyboard:** <kbd>1</kbd>–<kbd>9</kbd> picks an answer, <kbd>Enter</kbd> locks in or continues, <kbd>Esc</kbd> pauses, <kbd>M</kbd> mutes all sound, <kbd>N</kbd> turns music on or off.
+**Keyboard:** <kbd>1</kbd>–<kbd>9</kbd> picks an answer, <kbd>Enter</kbd> locks in or continues, <kbd>Esc</kbd> pauses (the **‹ Map** button in the mission bar does the same, and the pause menu's *Abort to map* takes you back to the galaxy map), <kbd>M</kbd> mutes all sound, <kbd>N</kbd> turns music on or off.
 
-**Your ship.** The same inline-SVG ship appears on the title, the galaxy map, in every mission, in the debrief and in the Repair Bay hangar. It always shows your current tier.
+**Your ship.** The same inline-SVG ship appears on the title, the galaxy map, in every mission, in journeys, in the debrief and in the Repair Bay hangar. It always shows your current tier and carries a small Databricks mark on the dorsal wing. On the galaxy map, the worlds whose questions are mostly Databricks networking (Mars Colony, Asteroid Belt and Deep Space) carry the same mark.
 
 | What you see | What it means |
 |---|---|
@@ -264,6 +264,8 @@ data/questions.js     levels, story dialog, topics, mini diagrams, 114 questions
 data/concepts.js      question → concept figure + params + concept text (all 114)
 js/explainers.js      34 parameterised, animated SVG concept figures + param schemas + feedback block
 js/util.js store.js   helpers; localStorage progress, Leitner, derived stats, export/import
+js/brand.js           the official Databricks mark (same path as assets/databricks-mark.svg) for use inside SVGs
+assets/               databricks-mark.svg, the official Databricks symbol (local file, no runtime fetch)
 js/ship.js            the player's ship: topic→module map, tiers + decals, SVG renderer, mission controller, hangar scene
 js/audio.js           WebAudio context + buses (master/music/SFX), limiter, ducking, hidden-tab suspend, synth SFX
 js/music.js           generative music: lookahead scheduler, calm/focus/tension moods, victory sting, reverb/delay
@@ -280,6 +282,8 @@ MOBILE_AUDIT.md       phone audit: what was wrong before the mobile pass and wha
 ## Disclaimer
 
 This is an unofficial, personal learning project. It is not affiliated with, sponsored by, or endorsed by Databricks, Microsoft, Amazon Web Services, or Google. Product names are trademarks of their respective owners.
+
+Databricks and the Databricks logo are trademarks of Databricks, Inc.
 
 The facts in the question bank are paraphrased from public documentation, and every Databricks question links to the page it was checked against, for example:
 

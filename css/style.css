@@ -172,7 +172,14 @@ body[data-screen="debrief"] #screen-debrief, body[data-screen="map"] #screen-map
 .logo span:nth-child(3) { font-size: .62em; letter-spacing: .42em; padding-top: .18em; }
 .title-sub { font-size: 1.15rem; color: var(--muted); max-width: 30em; margin: 0 0 28px; }
 .title-hint { margin-top: 18px; font-size: 13px; color: var(--dim); }
-.title-foot { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.title-foot { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-size: 12.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.title-foot .made-with { display: inline-flex; align-items: center; gap: .4em; text-transform: none; letter-spacing: .04em; font-size: 13px; color: var(--muted); }
+/* "Databricks heart": a Lava heart next to the official mark; one accessible image named "love" */
+.dbx-heart { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
+.dbx-heart .heart { width: 13px; height: 12px; fill: #FF3621; }
+.dbx-heart img { width: 12px; height: 13px; display: block; }
+.title-eyebrow { display: flex; align-items: center; gap: 8px; }
+.title-eyebrow .eyebrow-mark { width: 14px; height: 15px; flex: none; }
 
 /* ---------- galaxy map ---------- */
 #screen-map { overflow: hidden; }
@@ -193,6 +200,9 @@ body[data-screen="debrief"] #screen-debrief, body[data-screen="map"] #screen-map
 @media (hover: hover) { #galaxy .planet:hover .planet-art { transform: scale(1.06); } }
 #galaxy .planet .planet-art { transform-origin: center; transform-box: fill-box; }
 #galaxy .planet.locked .planet-art { filter: grayscale(.7) brightness(.62); opacity: .85; }
+/* Databricks worlds: a small official mark on a dark badge, upper right of the planet */
+#galaxy .planet .pl-dbx circle { fill: rgba(6, 10, 31, .82); stroke: rgba(255, 255, 255, .22); stroke-width: 1.5; }
+#galaxy .planet.locked .pl-dbx { opacity: .7; }
 #galaxy .planet .lock circle { fill: rgba(6, 10, 31, .8); stroke: rgba(255, 255, 255, .35); }
 #galaxy .planet .lock rect, #galaxy .planet .lock path { fill: none; stroke: #c7d2fe; stroke-width: 2; }
 #galaxy .pl-num { font: 700 13px var(--font); letter-spacing: .26em; fill: var(--accent); text-anchor: middle; }
@@ -278,6 +288,9 @@ body[data-screen="debrief"] #screen-debrief, body[data-screen="map"] #screen-map
 #screen-mission.boss .mission-planet { opacity: .62; }
 .hud { position: relative; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 16px; }
 .hud-left { display: flex; align-items: center; gap: 12px; min-width: 210px; }
+/* On-screen Esc: same action as the Esc key (pause menu, then "Abort to map") */
+.hud-map { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 40px; padding: 0 12px 0 8px; }
+.hud-map svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .hud-planet { width: 46px; height: 46px; flex: none; }
 .hud-title { font: 800 20px/1.1 var(--display); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .hud-mid { flex: 1; min-width: 160px; }
@@ -1019,7 +1032,8 @@ table.best .star-ico { width: 15px; height: 15px; }
   .mission-planet { opacity: .3; }
   .hud { flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 8px 8px; border-radius: 14px; }
   .hud-right { display: contents; }
-  .hud-left { order: 0; flex: 1 1 calc(100% - 108px); min-width: 0; gap: 8px; }
+  .hud-map { order: -1; padding: 0 10px 0 6px; }
+  .hud-left { order: 0; flex: 1 1 calc(100% - 222px); min-width: 0; gap: 8px; }
   .hud-left > div:last-child { min-width: 0; }
   .hud-planet { width: 30px; height: 30px; }
   #hud-mode { font-size: 9.5px; letter-spacing: .16em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1131,7 +1145,10 @@ table.best .star-ico { width: 15px; height: 15px; }
   .logo { font-size: clamp(30px, 11vh, 52px); margin: 6px 0; }
   .logo span:nth-child(2) { padding-left: .55em; }
   .title-sub { margin: 0 0 14px; font-size: .95rem; }
-  .title-foot { display: none; }
+  /* footer: just the credit, small, bottom right */
+  .title-foot { display: flex; position: absolute; left: auto; right: max(12px, env(safe-area-inset-right)); bottom: max(6px, env(safe-area-inset-bottom)); }
+  .title-foot .title-count { display: none; }
+  .title-foot .made-with { font-size: 11.5px; }
   /* map: card on the right, map on the left */
   #map-stage { inset: calc(62px + env(safe-area-inset-top)) 352px 0 0; }
   #mission-card { left: auto; right: max(8px, env(safe-area-inset-right)); top: calc(64px + env(safe-area-inset-top)); bottom: 8px; width: 336px; transform: none; max-height: none; padding: 12px 14px; }

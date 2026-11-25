@@ -7,20 +7,30 @@
   var BOX_HOURS = [0, 0, 4, 24, 72, 168];
   var MAX_SESSIONS = 200;
   // Audio: `muted` is the master mute-all (M key, mute button). `music` / `sfx` toggle each layer (N key toggles music).
-  var DEFAULT_SETTINGS = { freeRoam: false, muted: false, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8, motion: 'auto' };
+  // Free roam is on by default. `freeRoamSet` records that the player chose a value in Settings (see migrateSettings).
+  // `journeySpeed` multiplies the holo-sim journey autoplay pace (1 = the default pace).
+  var DEFAULT_SETTINGS = { freeRoam: true, freeRoamSet: false, muted: false, music: true, sfx: true, musicVol: 0.5, sfxVol: 0.8, motion: 'auto', journeySpeed: 1 };
   var MOTIONS = ['auto', 'reduce', 'full'];
+  var JOURNEY_SPEEDS = [1, 1.5, 2];
 
   // Settings migration (same save version). Old saves only had { freeRoam, muted, motion }:
   // keep their mute-all choice and switch the new music/SFX layers on at default volume.
   // Every field is type-checked so a hand-edited or corrupt import can't break audio or motion.
+  // Free roam: saves from before it defaulted on always stored `freeRoam: false` (the old default was written on
+  // first save), so "turned off on purpose" can't be told apart from "never touched". Those saves have no
+  // `freeRoamSet` flag, and they move to the new default (on). From now on, changing the switch sets the flag,
+  // and a flagged value is always kept, on or off.
   function migrateSettings(st) {
     st = st && typeof st === 'object' && !Array.isArray(st) ? st : {};
     var bool = function (k) { return typeof st[k] === 'boolean' ? st[k] : DEFAULT_SETTINGS[k]; };
     var vol = function (k) { var v = st[k]; return typeof v === 'number' && isFinite(v) ? Math.max(0, Math.min(1, v)) : DEFAULT_SETTINGS[k]; };
+    var chosen = st.freeRoamSet === true && typeof st.freeRoam === 'boolean';
     return {
-      freeRoam: bool('freeRoam'), muted: bool('muted'), music: bool('music'), sfx: bool('sfx'),
+      freeRoam: chosen ? st.freeRoam : DEFAULT_SETTINGS.freeRoam, freeRoamSet: chosen,
+      muted: bool('muted'), music: bool('music'), sfx: bool('sfx'),
       musicVol: vol('musicVol'), sfxVol: vol('sfxVol'),
-      motion: MOTIONS.indexOf(st.motion) >= 0 ? st.motion : DEFAULT_SETTINGS.motion
+      motion: MOTIONS.indexOf(st.motion) >= 0 ? st.motion : DEFAULT_SETTINGS.motion,
+      journeySpeed: JOURNEY_SPEEDS.indexOf(st.journeySpeed) >= 0 ? st.journeySpeed : DEFAULT_SETTINGS.journeySpeed
     };
   }
 
@@ -108,7 +118,7 @@
     return s;
   }
 
-  var store = (ONA.store = { state: null, BOX_HOURS: BOX_HOURS, DEFAULT_SETTINGS: DEFAULT_SETTINGS, JOURNEY_XP: JOURNEY_XP, _migrate: migrate, _migrateSettings: migrateSettings, _migrateShip: migrateShip, _fresh: fresh });
+  var store = (ONA.store = { state: null, BOX_HOURS: BOX_HOURS, DEFAULT_SETTINGS: DEFAULT_SETTINGS, JOURNEY_XP: JOURNEY_XP, JOURNEY_SPEEDS: JOURNEY_SPEEDS, _migrate: migrate, _migrateSettings: migrateSettings, _migrateShip: migrateShip, _fresh: fresh });
   store.now = function () { return Date.now(); };   // overridable in tests
 
   store.init = function () { store.state = load(); };
@@ -123,6 +133,7 @@
     if (v === undefined) return store.state.settings[k];
     var next = {}; Object.keys(store.state.settings).forEach(function (x) { next[x] = store.state.settings[x]; });
     next[k] = v;
+    if (k === 'freeRoam') next.freeRoamSet = true;     // an explicit choice, kept from now on
     store.state.settings = migrateSettings(next);
     if (!(opts && opts.noSave)) store.save();
     return store.state.settings[k];

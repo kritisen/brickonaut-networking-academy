@@ -52,6 +52,9 @@
 .jr-ctrl-r { display: flex; gap: 8px; }
 .jr-ctrl .btn:disabled { opacity: .4; cursor: default; }
 #jr-auto[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 14px rgba(246, 196, 83, .3); }
+.jr-speed { min-width: 52px; padding-inline: .7em; font-variant-numeric: tabular-nums; }
+/* the shared ship inside a scene: no shield bubble or effects (compact), centred on the node */
+.jb-ship svg.ship { overflow: visible; }
 .jr-dots { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .jr-dot { width: 26px; height: 26px; padding: 0; border: 0; background: none; cursor: pointer; display: grid; place-items: center; border-radius: 50%; }
 .jr-dot i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .2); transition: all .25s var(--ease); }
@@ -144,21 +147,21 @@
 .jr-trail { fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation-name: jrDraw; animation-timing-function: linear; animation-fill-mode: forwards; filter: drop-shadow(0 0 5px rgba(246, 196, 83, .7)); }
 .jr-trail.back { stroke: var(--mint); stroke-width: 2; opacity: .9; filter: drop-shadow(0 0 5px rgba(124, 247, 195, .6)); }
 .jr-travel.bad .jr-trail { stroke: var(--rose); filter: drop-shadow(0 0 5px rgba(255, 77, 109, .7)); }
-.jr-trail-flow { fill: none; stroke: #fff6d6; stroke-width: 2; stroke-dasharray: 2 16; stroke-linecap: round; opacity: .7; animation: jrFlow 1s linear infinite; }
+.jr-trail-flow { fill: none; stroke: #fff6d6; stroke-width: 2; stroke-dasharray: 2 16; stroke-linecap: round; opacity: .7; animation: jrFlow calc(.5s * var(--jrk, 1)) linear infinite; }
 .jr-travel.bad .jr-trail-flow { display: none; }
 .jr-travel.static .jr-trail { stroke-dashoffset: 0; animation: none; }
 .jr-pkt-core { fill: #fff; }
-.jr-pkt-label { animation: jrTagOut .35s var(--ease) forwards; }
+.jr-pkt-label { animation: jrTagOut calc(.18s * var(--jrk, 1)) var(--ease) forwards; }
 .jr-travel.static .jr-pkt-label { display: none; }
 @keyframes jrTagOut { to { opacity: 0; } }
 .jr-pkt-tag { fill: rgba(30, 22, 4, .92); stroke: var(--gold); stroke-width: 1.2; }
 .jr-travel.bad .jr-pkt-tag { stroke: var(--rose); fill: rgba(40, 6, 16, .92); }
 .jr-pkt-t { fill: #fff2c4; font: 800 10.5px var(--mono); stroke: none !important; }
-.jr-block { opacity: 0; animation: jrIn .3s var(--ease) forwards; }
+.jr-block { opacity: 0; animation: jrIn calc(.15s * var(--jrk, 1)) var(--ease) forwards; }
 .jx circle { fill: #2c0b16; stroke: var(--rose); stroke-width: 2; filter: drop-shadow(0 0 8px var(--rose)); }
 .jx path { stroke: var(--rose); stroke-width: 2.8; stroke-linecap: round; }
-.jr-ping { fill: none; stroke: var(--gold); stroke-width: 2.5; opacity: 0; animation: jrPing 1.1s var(--ease) forwards; transform-box: fill-box; transform-origin: center; }
-.jr-badge { opacity: 0; animation: jrIn .4s var(--ease) forwards; }
+.jr-ping { fill: none; stroke: var(--gold); stroke-width: 2.5; opacity: 0; animation: jrPing calc(.55s * var(--jrk, 1)) var(--ease) forwards; transform-box: fill-box; transform-origin: center; }
+.jr-badge { opacity: 0; animation: jrIn calc(.2s * var(--jrk, 1)) var(--ease) forwards; }
 .jp rect { fill: #0b1236; stroke: rgba(140, 160, 230, .7); stroke-width: 1.2; }
 .jp-t { fill: #e1e7ff; font: 800 11.5px var(--mono); stroke: none !important; }
 .jp.ok rect { fill: #08261f; stroke: var(--mint); }
@@ -250,7 +253,8 @@
   .jr-dots { order: -1; flex: 1 1 100%; flex-wrap: wrap; justify-content: center; gap: 0; }
   .jr-dot { flex: 0 0 44px; width: 44px; height: 44px; }
   .jr-ctrl-r { margin-left: auto; gap: 6px; }
-  .jr-ctrl .btn { padding: .6em .85em; }
+  .jr-ctrl .btn { padding: .6em .7em; }
+  .jr-ctrl .jr-speed { min-width: 44px; padding-inline: .5em; }
   .jl-world-t { font-size: 19px; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
@@ -271,6 +275,7 @@
   .jr-scan-hint { display: none; }
   .jr-ctrl { flex-wrap: nowrap; }
   .jr-ctrl .btn { padding: .55em .9em; }
+  .jr-ctrl-r #jr-replay { display: none; }        /* room for the speed button; R still replays, and Back + Next re-run a step */
   .jr-dots { flex-wrap: nowrap; gap: 0; }
   .jr-ctrl { position: static; margin: 8px 0 0; padding: 6px 0 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 }

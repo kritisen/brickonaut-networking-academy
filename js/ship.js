@@ -193,6 +193,8 @@
     });
     // dorsal wing, fin, nacelle (in front of hull)
     h += '<path d="M18-13L-48-50H-74L-62-15Z" fill="url(#wg' + u + ')" class="wing dorsal"/><path d="M18-13L-48-50" class="edge"/>';
+    // the Databricks mark on the dorsal wing (official symbol, js/brand.js); same on every ship drawing
+    if (ONA.brand) h += ONA.brand.markAt(-50, -34, 20, 'ship-mark');
     if (T >= 2) h += '<path d="M-64-18L-86-46H-98L-88-17Z" fill="url(#wg' + u + ')" class="fin"/>';
     if (T >= 3) h += '<ellipse cx="-58" cy="-33" rx="24" ry="5.5" fill="url(#hl' + u + ')" class="nacelle"/><ellipse cx="-82" cy="-33" rx="1.6" ry="4.5" fill="url(#eg' + u + ')"/>';
     if (T >= 4) h += '<path d="M100-1C88-7 70-13 50-15L-58-17" class="trimline" stroke="url(#gd' + u + ')"/>' +

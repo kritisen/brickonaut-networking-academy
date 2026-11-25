@@ -11,16 +11,27 @@
  * Keys while open: ←/→ step, Space or P autoplay, R replay, 1–4 answer the check, Esc close. The game's key
  * handler never sees them (capture phase), and the boss clock is frozen (ONA.game.journeyOpen).
  * Reduced motion: no travelling packets or pulses, just the state of each step.
+ * Autoplay starts on open, except under reduced motion (a self-advancing scene is motion the player didn't ask
+ * for, and the static end-state of each step is better read at your own pace): there it starts paused.
+ * Pace: Settings `journeySpeed` (1×, 1.5×, 2×; the speed button in the player) divides the step dwell and every
+ * packet / trail / ping animation. 1× is the default.
  */
 (function (root) {
   'use strict';
   var ONA = (root.ONA = root.ONA || {});
   var C = { cyan: '#4fd1ff', mint: '#7cf7c3', gold: '#f6c453', rose: '#ff4d6d', violet: '#b794f6', orange: '#ff8a5b', ice: '#c7d2fe' };
-  var LEG = 1.5;          // seconds per travel leg
+  var LEG = 0.75;         // seconds per travel leg at 1× (was 1.5 s before autoplay got twice as fast)
+  var SPEEDS = [1, 1.5, 2];
+  function speed() { var v = ONA.store && ONA.store.state ? ONA.store.state.settings.journeySpeed : 1; return SPEEDS.indexOf(v) >= 0 ? v : 1; }
+  // Autoplay dwell per step in ms: a 2 s floor plus 16 ms per character of narration, divided by the speed.
+  // (Before: max(4200, 42 ms per char) at a single speed. Across the 63 steps the mean drops from 6.7 s to 3.3 s.)
+  function dwellMs(step, sp) { var n = (step && step.say || '').length; return Math.round(Math.max(2000, 800 + n * 16) / (sp || 1)); }
+  function autoplayDefault() { return !RM(); }
   var UID = 0;
 
   function E(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function r1(v) { return Math.round(v * 10) / 10; }
+  function r2(v) { return Math.round(v * 1000) / 1000; }
   function RM() { try { return !!(ONA.util && ONA.util.reducedMotion && ONA.util.reducedMotion()); } catch (e) { return false; } }
   function icon(kind) { return ONA.art && ONA.art.icon ? ONA.art.icon(kind) : ''; }
   function kc(kind) { return ONA.art && ONA.art.kindColor ? ONA.art.kindColor(kind) : C.cyan; }
@@ -33,8 +44,9 @@
     var ico = '<g class="jb-ico" transform="translate(-12 -12)">' + icon(n.kind) + '</g>';
     switch (n.body) {
       case 'ship': {
-        var ship = ONA.art && ONA.art.ship ? ONA.art.ship().replace(/^<svg[^>]*>|<\/svg>$/g, '') : '';
-        return '<g class="jb-ship"><ellipse class="jb-thrust" cx="-30" cy="0" rx="14" ry="5"/><svg x="-42" y="-21" width="84" height="42" viewBox="-70 -34 140 68" overflow="visible">' + ship + '</svg></g>';
+        // the same ship as the title, map and missions (js/ship.js via art.ship), incl. tier, decals and the Databricks mark
+        var ship = ONA.art && ONA.art.ship ? ONA.art.ship('x="-52" y="-21.5" width="104" height="43" overflow="visible"') : '';
+        return '<g class="jb-ship"><ellipse class="jb-thrust" cx="-30" cy="0" rx="12" ry="4.5"/>' + ship + '</g>';
       }
       case 'mother':
         return '<g class="jb-mother"><ellipse class="jb-orbit" rx="48" ry="15"/><circle class="jb-hull" r="30"/><circle class="jb-core" r="22"/>' + ico +
@@ -92,10 +104,11 @@
   function scene(j, i, opts) {
     opts = opts || {};
     var s = j.steps[i], u = 'jr' + (++UID), rm = opts.static || RM();
+    var sp = SPEEDS.indexOf(opts.speed) >= 0 ? opts.speed : 1, LEG = r2(0.75 / sp);
     if (s.figure && ONA.explainers) return '<div class="jr-figure">' + ONA.explainers.render(s.figure.fig, s.figure.params) + '</div>';
     var W = j.w || 720, H = j.h || 400, now = involved(s), seen = {};
     for (var k = 0; k <= i; k++) involved(j.steps[k]).forEach(function (id) { seen[id] = 1; });
-    var out = '<svg class="jr-scene" viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="' + E(j.title + ', step ' + (i + 1) + ': ' + s.title) + '">' +
+    var out = '<svg class="jr-scene" viewBox="0 0 ' + W + ' ' + H + '" style="--jrk:' + r2(1 / sp) + '" role="group" aria-label="' + E(j.title + ', step ' + (i + 1) + ': ' + s.title) + '">' +
       '<defs><pattern id="' + u + 'grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" class="jr-gridline"/></pattern>' +
       '<radialGradient id="' + u + 'neb"><stop offset="0" stop-color="#b794f6" stop-opacity=".34"/><stop offset=".55" stop-color="#4fd1ff" stop-opacity=".1"/><stop offset="1" stop-color="#4fd1ff" stop-opacity="0"/></radialGradient>' +
       '<radialGradient id="' + u + 'pkt"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="' + (s.blocked || s.tone === 'bad' ? C.rose : C.gold) + '"/><stop offset="1" stop-color="' + (s.blocked || s.tone === 'bad' ? C.rose : C.gold) + '" stop-opacity="0"/></radialGradient>' +
@@ -117,7 +130,7 @@
     var pts = travelPts(j, s), dur = 0;
     if (pts) {
       var d = dOf(pts), bad = s.blocked || s.tone === 'bad', legs = s.back ? 2 : 1;
-      dur = LEG * legs;
+      dur = r2(LEG * legs);
       out += '<g class="jr-travel' + (bad ? ' bad' : '') + (rm ? ' static' : '') + '" aria-hidden="true">' +
         '<path class="jr-trail" d="' + d + '" pathLength="1" style="animation-duration:' + LEG + 's" marker-end="url(#' + u + 'arr)"' + (s.back ? ' marker-start="url(#' + u + 'arr)"' : '') + '/>' +
         '<path class="jr-trail-flow" d="' + d + '"/>';
@@ -150,7 +163,7 @@
     out += '<g aria-hidden="true">' + (s.badges || []).map(function (b, k) {
       var n = nodeOf(j, b.node); if (!n) return '';
       var y = n.y < 110 ? n.y + 84 : n.y - 50;
-      return '<g class="jr-badge" style="animation-delay:' + (dur ? dur : 0.2 + k * 0.12).toFixed(2) + 's">' + pill(n.x, y, b.text, b.tone) + '</g>';
+      return '<g class="jr-badge" style="animation-delay:' + (dur ? dur : (0.1 + k * 0.06) / sp).toFixed(2) + 's">' + pill(n.x, y, b.text, b.tone) + '</g>';
     }).join('') + '</g>';
     return out + '</svg>';
   }
@@ -196,7 +209,7 @@
       '<div class="jr-packet" id="jr-packet"></div><div class="jr-check" id="jr-check" hidden></div></aside></div>' +
       '<footer class="jr-ctrl"><button class="btn ghost" id="jr-back"><span aria-hidden="true">←</span> Back</button>' +
       '<div class="jr-dots" id="jr-dots" role="group" aria-label="Journey progress"></div>' +
-      '<div class="jr-ctrl-r"><button class="btn ghost" id="jr-auto" aria-pressed="false">Autoplay</button><button class="btn ghost" id="jr-replay" aria-label="Replay this step (R)">Replay</button>' +
+      '<div class="jr-ctrl-r"><button class="btn ghost" id="jr-auto" aria-pressed="false">Autoplay</button><button class="btn ghost jr-speed" id="jr-speed" type="button"></button><button class="btn ghost" id="jr-replay" aria-label="Replay this step (R)">Replay</button>' +
       '<button class="btn primary" id="jr-next">Next <span aria-hidden="true">→</span></button></div></footer></section>';
     document.body.appendChild(el);
     $('jr-close').addEventListener('click', close);
@@ -204,6 +217,7 @@
     $('jr-back').addEventListener('click', back);
     $('jr-next').addEventListener('click', next);
     $('jr-auto').addEventListener('click', toggleAuto);
+    $('jr-speed').addEventListener('click', cycleSpeed);
     $('jr-replay').addEventListener('click', replay);
     $('jr-dots').addEventListener('click', function (e) { var b = e.target.closest('[data-step]'); if (b) { stopAuto(); go(+b.dataset.step); } });
     $('jr-stage').addEventListener('click', function (e) { var n = e.target.closest('.jn'); if (n) scan(n.dataset.node); else hideTip(); });
@@ -235,7 +249,8 @@
     frame(function () { if (!el.hidden) el.classList.add('open'); });
     if (S.src === 'hint' && ONA.store && ONA.store.journeyHint) ONA.store.journeyHint(id);
     sfx('click');
-    renderDots(); go(0);
+    renderDots(); syncSpeed(); go(0);
+    if (autoplayDefault()) startAuto();
     later(function () { focusIfVisible($('jr-next')); }, 40);
     return true;
   }
@@ -296,7 +311,7 @@
     drawStage();
     sfx('select');
   }
-  function drawStage() { var j = S.j; if (S.i < j.steps.length) $('jr-stage').innerHTML = scene(j, S.i, { sel: S.sel }); }
+  function drawStage() { var j = S.j; if (S.i < j.steps.length) $('jr-stage').innerHTML = scene(j, S.i, { sel: S.sel, speed: speed() }); }
   function next() {
     var j = S.j; if (!j) return;
     if (S.i === j.steps.length) { if (S.check && S.check.solved) close(); return; }
@@ -314,9 +329,25 @@
       if (S.i >= S.j.steps.length - 1) { stopAuto(); return; }
       go(S.i + 1); S.timer = setTimeout(tick, dwell());
     };
+    clearTimeout(S.timer);
     S.timer = setTimeout(tick, dwell());
   }
-  function dwell() { var s = S.j.steps[S.i]; return Math.max(4200, (s.say || '').length * 42); }
+  function dwell() { return dwellMs(S.j.steps[S.i], speed()); }
+  // 1× → 1.5× → 2× → 1×, saved in Settings. A running autoplay restarts its countdown at the new pace.
+  function cycleSpeed() {
+    var next = SPEEDS[(SPEEDS.indexOf(speed()) + 1) % SPEEDS.length];
+    if (ONA.store && ONA.store.state) ONA.store.setting('journeySpeed', next);
+    syncSpeed(); sfx('select');
+    if (S.auto) { clearTimeout(S.timer); startAuto(); }
+  }
+  function speedLabel(v) { return v + '×'; }
+  function syncSpeed() {
+    var b = typeof document !== 'undefined' && $('jr-speed'); if (!b) return;
+    var v = speed();
+    b.textContent = speedLabel(v);
+    b.setAttribute('aria-label', 'Autoplay speed ' + speedLabel(v) + '. Change speed');
+    b.title = 'Autoplay speed: 1×, 1.5× or 2×';
+  }
   function stopAuto() { S.auto = false; clearTimeout(S.timer); var b = $('jr-auto'); if (b) { b.setAttribute('aria-pressed', 'false'); b.textContent = 'Autoplay'; } }
 
   // node scanner tooltip
@@ -492,6 +523,7 @@
   }
 
   ONA.journeys = { open: open, close: close, button: button, decorateQuestion: decorateQuestion, logCard: logCard, renderLibrary: renderLibrary, scene: scene, get: get, list: list,
-    state: function () { return { open: S.open, id: S.j && S.j.id, step: S.i, auto: S.auto, sel: S.sel, solved: !!(S.check && S.check.solved) }; },
+    SPEEDS: SPEEDS, dwellMs: dwellMs, speed: speed, autoplayDefault: autoplayDefault, cycleSpeed: cycleSpeed,
+    state: function () { return { open: S.open, id: S.j && S.j.id, step: S.i, auto: S.auto, speed: speed(), sel: S.sel, solved: !!(S.check && S.check.solved) }; },
     pending: function () { return S.pend.length; } };
 })(typeof window !== 'undefined' ? window : globalThis);
