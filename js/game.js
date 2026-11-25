@@ -1,4 +1,4 @@
-/* Orbital Network Academy — game controller: screens, galaxy map, missions, grading, dialogs, Repair Bay, Captain's Log. */
+/* Brickonaut Networking Academy — game controller: screens, galaxy map, missions, grading, dialogs, Repair Bay, Captain's Log. */
 (function (ONA) {
   'use strict';
   var U = ONA.util, $ = U.$, $$ = U.$$, el = U.el, esc = U.esc, store = ONA.store, sfx = ONA.sfx, fx = ONA.fx, art = ONA.art;
@@ -1319,7 +1319,7 @@
     $('#screen-log').innerHTML = '<div class="page">' + h + '</div>';
 
     $('#log-export').addEventListener('click', function () {
-      U.download('orbital-network-academy-progress-' + new Date().toISOString().slice(0, 10) + '.json', store.exportJSON());
+      U.download('brickonaut-networking-academy-progress-' + new Date().toISOString().slice(0, 10) + '.json', store.exportJSON());
       toast('Progress exported');
     });
     $('#log-import-file').addEventListener('change', function (e) {

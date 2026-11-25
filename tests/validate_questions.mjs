@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Validates the Orbital Network Academy question bank.
+// Validates the Brickonaut Networking Academy question bank.
 // Usage: node tests/validate_questions.mjs
 // Loads data/questions.js (+ every registered extra level file) in a sandbox exactly as the browser would.
 import { readFileSync } from 'node:fs';
@@ -342,7 +342,7 @@ if (boss && ONA.QUESTIONS.filter((q) => q.level === boss.id && q.type === 'multi
   if (!m || +m[1] !== ONA.QUESTIONS.length) err('title', `index.html title count (${m && m[1]}) must equal the bank size (${ONA.QUESTIONS.length}); game.js also sets it at runtime`);
 }
 
-console.log('Orbital Network Academy — question bank validation');
+console.log('Brickonaut Networking Academy — question bank validation');
 console.log('Level  Name                    Questions  Gradable steps');
 for (const l of ONA.LEVELS) {
   const s = perLevel[l.id] || { total: 0, parts: 0 };

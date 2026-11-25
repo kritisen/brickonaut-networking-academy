@@ -1,6 +1,8 @@
 /* Progress persistence (localStorage), Leitner repair bay, session log, derived stats. */
 (function (ONA) {
   'use strict';
+  // The 'ona' prefix (and the ONA namespace) date from the game's original name. Keep this key as is: renaming it
+  // would orphan every player's saved progress. Imported save files are matched on `version`, not on the game name.
   var KEY = 'ona.progress.v1';
   var VERSION = 1;
   // Leitner box review intervals (hours). Box 1 = due immediately. Correct in box 5 = repaired (box 0).
@@ -79,7 +81,7 @@
   }
 
   function normalize(s) {
-    if (!s || typeof s !== 'object' || s.version !== VERSION) throw new Error('Not an Orbital Network Academy v1 save');
+    if (!s || typeof s !== 'object' || s.version !== VERSION) throw new Error('Not a Brickonaut Networking Academy v1 save');
     var f = fresh(), rawShip = s.ship;          // read before defaults fill it in (see migrateShip)
     Object.keys(f).forEach(function (k) { if (s[k] === undefined) s[k] = f[k]; });
     s.settings = migrateSettings(s.settings);

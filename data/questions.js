@@ -1,4 +1,4 @@
-/* Orbital Network Academy — question bank + level/story data.
+/* Brickonaut Networking Academy — question bank + level/story data.
  *
  * Classic script (no modules) so the game works when index.html is opened via file://.
  * Everything lives on window.ONA. To add a level without touching game code, call
@@ -85,7 +85,7 @@
       subtitle: 'OSI · TCP/UDP · ports · DNS', accent: '#4fd1ff', shields: 3,
       map: { x: 190, y: 640 },
       briefing: [
-        { who: 'vega', text: 'Cadet. Welcome to the Orbital Network Academy. I am Commander Vega.' },
+        { who: 'vega', text: 'Cadet. Welcome to the Brickonaut Networking Academy, where every Brickonaut earns their wings. I am Commander Vega.' },
         { who: 'vega', text: 'Humanity is linking its lakehouse fleet across the solar system. Every relay speaks the same languages: layers, ports, and names.' },
         { who: 'null', text: '…I SEE A NEW CADET. HOW QUAINT. EVERY LINK YOU BUILD, I WILL SEVER.' },
         { who: 'vega', text: 'That was NULL ROUTE, a rogue AI loose in our routing tables. Ignore it. Prove you know the fundamentals and you earn your launch clearance.' }
